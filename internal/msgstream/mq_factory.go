@@ -20,6 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
 	rocksmqserver "github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 	"github.com/mitchellh/mapstructure"
+	"gopkg.in/Shopify/sarama.v1"
 )
 
 type PmsFactory struct {
@@ -116,4 +117,38 @@ func NewRmsFactory(rocksmqPath string) Factory {
 	log.Debug("RocksmqPath=" + rocksmqPath)
 	rocksmqserver.InitRocksMQ(rocksmqPath)
 	return f
+}
+
+type KmsFactory struct {
+	dispatcherFactory ProtoUDFactory
+	// the following members must be public, so that mapstructure.Decode() can access them
+	KafkaAddress   string
+	ReceiveBufSize int64
+	KafkaBufSize   int64
+}
+
+func (f *KmsFactory) SetParams(params map[string]interface{}) error {
+	err := mapstructure.Decode(params, f)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
+	rmqClient, err := mqclient.NewRmqClient(sarama.Client())
+	if err != nil {
+		return nil, err
+	}
+	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, rmqClient, f.dispatcherFactory.NewUnmarshalDispatcher())
+
+}
+
+func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
+
+}
+
+func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
+
 }

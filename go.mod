@@ -8,6 +8,9 @@ require (
 	github.com/apache/pulsar-client-go v0.5.0
 	github.com/apache/thrift/lib/go/thrift v0.0.0-20210120171102-e27e82c46ba4
 	github.com/coreos/etcd v3.3.13+incompatible
+	github.com/eapache/go-resiliency v1.2.0 // indirect
+	github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21 // indirect
+	github.com/eapache/queue v1.1.0 // indirect
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
@@ -29,6 +32,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/quasilyte/go-ruleguard v0.2.1 // indirect
+	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cast v1.3.0
@@ -47,6 +51,7 @@ require (
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/grpc v1.31.0
 	google.golang.org/protobuf v1.25.0 // indirect
+	gopkg.in/Shopify/sarama.v1 v1.20.1
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
 	sigs.k8s.io/yaml v1.2.0 // indirect
