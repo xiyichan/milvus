@@ -20,6 +20,7 @@ type ProducerOptions struct {
 type ProducerMessage struct {
 	Payload    []byte
 	Properties map[string]string
+	Topic      string
 }
 
 type Producer interface {

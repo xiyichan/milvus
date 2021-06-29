@@ -1,9 +1,9 @@
 package mqclient
 
 import (
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
+	"errors"
 	"gopkg.in/Shopify/sarama.v1"
 	"sync"
 )
@@ -29,14 +29,28 @@ func GetKafkaClientInstance(kafkaAddress []string, config *sarama.Config) (*kafk
 }
 
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
+	kk,err:=sarama.NewSyncProducerFromClient(kc.client)
+	if err != nil {
+		return nil, err
+	}
+	if kk == nil {
+		return nil, errors.New("kafka is not ready, producer is nil")
+	}
+	producer:=&kafkaProducer{k:kk}
+	return producer,nil
 
 }
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
-
+	kk,err:=sarama.NewConsumerGroupFromClient(options.SubscriptionName,kc.client)
+	if err != nil {
+		return nil, err
+	}
+	consumer:=&kafkaConsumer{c:kk}
+	return consumer,nil
 }
 
 func (kc *kafkaClient) EarliestMessageID() MessageID {
-
+	kc.client.
 }
 
 func (kc *kafkaClient) StringToMsgID(id string) (MessageID, error) {

@@ -122,7 +122,7 @@ func NewRmsFactory(rocksmqPath string) Factory {
 type KmsFactory struct {
 	dispatcherFactory ProtoUDFactory
 	// the following members must be public, so that mapstructure.Decode() can access them
-	KafkaAddress   string
+	KafkaAddress   []string
 	ReceiveBufSize int64
 	KafkaBufSize   int64
 }
@@ -133,22 +133,32 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 		return err
 	}
 	return nil
-
 }
 
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	rmqClient, err := mqclient.NewRmqClient(sarama.Client())
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, &sarama.Config{})
 	if err != nil {
 		return nil, err
 	}
-	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, rmqClient, f.dispatcherFactory.NewUnmarshalDispatcher())
-
+	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, &sarama.Config{})
+	if err != nil {
+		return nil, err
+	}
+	return NewMqTtMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
 func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
-
+	return f.NewMsgStream(ctx)
+}
+func NewKmsFactory() Factory {
+	f := &PmsFactory{
+		dispatcherFactory: ProtoUDFactory{},
+		ReceiveBufSize:    64,
+		PulsarBufSize:     64,
+	}
+	return f
 }
