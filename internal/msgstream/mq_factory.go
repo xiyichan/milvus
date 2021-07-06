@@ -14,13 +14,13 @@ package msgstream
 import (
 	"context"
 
+	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/mqclient"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
 	rocksmqserver "github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 	"github.com/mitchellh/mapstructure"
-	"gopkg.in/Shopify/sarama.v1"
 )
 
 type PmsFactory struct {

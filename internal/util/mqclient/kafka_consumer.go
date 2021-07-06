@@ -1,6 +1,6 @@
 package mqclient
 
-import "gopkg.in/Shopify/sarama.v1"
+import "github.com/Shopify/sarama"
 
 type kafkaConsumer struct {
 	c          sarama.ConsumerGroup

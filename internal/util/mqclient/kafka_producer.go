@@ -2,7 +2,7 @@ package mqclient
 
 import (
 	"context"
-	"gopkg.in/Shopify/sarama.v1"
+	"github.com/Shopify/sarama"
 )
 
 type kafkaProducer struct {

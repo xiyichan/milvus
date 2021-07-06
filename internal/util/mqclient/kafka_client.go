@@ -2,9 +2,9 @@ package mqclient
 
 import (
 	"errors"
+	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
-	"gopkg.in/Shopify/sarama.v1"
 	"sync"
 )
 

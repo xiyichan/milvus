@@ -1,6 +1,6 @@
 package mqclient
 
-import "gopkg.in/Shopify/sarama.v1"
+import "github.com/Shopify/sarama"
 
 type kafkaMessage struct {
 	msg sarama.Message
