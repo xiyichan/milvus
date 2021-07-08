@@ -160,7 +160,7 @@ func (k *kafkaClient) Produce(topicName string, messages []ProducerMessage) erro
 
 type exampleConsumerGroupHandler struct{}
 
-func (exampleConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+func (exampleConsumerGroupHandler) Setup(_ sarama.ConsumerGroupSession) error {
 
 	return nil
 }
@@ -169,7 +169,6 @@ func (exampleConsumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error 
 
 }
 func (h exampleConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	fmt.Println(claim.InitialOffset())
 
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
