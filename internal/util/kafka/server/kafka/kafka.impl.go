@@ -161,7 +161,7 @@ func (k *kafkaClient) Produce(topicName string, messages []ProducerMessage) erro
 type exampleConsumerGroupHandler struct{}
 
 func (exampleConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
-	sess.ResetOffset("test_topic_1", 0, 3, "modified_meta")
+
 	return nil
 }
 func (exampleConsumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
@@ -201,7 +201,7 @@ func (k *kafkaClient) Consume(topicName string, groupID string) ([]ConsumerMessa
 	// Track errors
 	go func() {
 		for err := range group.Errors() {
-			fmt.Println("ERROR", err)
+			panic(err)
 		}
 	}()
 
