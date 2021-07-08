@@ -1,9 +1,9 @@
 package mqclient
 
-import "github.com/Shopify/sarama"
+import "github.com/milvus-io/milvus/internal/util/kafka/client/kafka"
 
 type kafkaConsumer struct {
-	c          sarama.ConsumerGroup
+	c          kafka.Consumer
 	msgChannel chan ConsumerMessage
 }
 
@@ -23,5 +23,5 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 
 }
 func (kc *kafkaConsumer) Close() {
-	kc.c.Close()
+
 }

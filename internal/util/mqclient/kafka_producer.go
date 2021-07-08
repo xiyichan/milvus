@@ -2,19 +2,21 @@ package mqclient
 
 import (
 	"context"
-	"github.com/Shopify/sarama"
+	"github.com/milvus-io/milvus/internal/util/kafka/client/kafka"
 )
 
 type kafkaProducer struct {
-	k sarama.SyncProducer
+	p kafka.Producer
 }
 
-func (kk *kafkaProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	//msgX:=&sarama.ProducerMessage{}
-
-	return nil
+func (kp *kafkaProducer) Topic() string {
+	return kp.p.Topic()
+}
+func (kp *kafkaProducer) Send(ctx context.Context, message *ProducerMessage) error {
+	pm := &kafka.ProducerMessage{Payload: message.Payload}
+	return kp.p.Send(pm)
 }
 
-func (kk *kafkaProducer) Close() {
-	kk.k.Close()
+func (kp *kafkaProducer) Close() {
+
 }
