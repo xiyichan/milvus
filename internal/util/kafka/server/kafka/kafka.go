@@ -24,7 +24,7 @@ type Kafka interface {
 	RegisterConsumer(consumer *Consumer)
 
 	Produce(topicName string, messages []ProducerMessage) error
-	Consume(topicName string, groupName string, n int) ([]ConsumerMessage, error)
+	Consume(topicName string, groupName string) ([]ConsumerMessage, error)
 	Seek(topicName string, groupName string, msgID Offset) error
 	EarliestMessageID(topicName string) (Offset, error)
 

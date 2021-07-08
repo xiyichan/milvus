@@ -100,27 +100,27 @@ func consume(ctx context.Context, consumer *consumer) {
 				return
 			}
 
-			for {
-				msg, err := consumer.client.server.Consume(consumer.topic, consumer.consumerName, 1)
-				if err != nil {
-					log.Debug("Consumer's goroutine cannot consume from (" + consumer.topic +
-						"," + consumer.consumerName + "): " + err.Error())
-					break
-				}
-
-				if len(msg) != 1 {
-					//log.Debug("Consumer's goroutine cannot consume from (" + consumer.topic +
-					//	"," + consumer.consumerName + "): message len(" + strconv.Itoa(len(msg)) +
-					//	") is not 1")
-					break
-				}
-
-				consumer.messageCh <- ConsumerMessage{
-					MsgID:   msg[0].MsgID,
-					Payload: msg[0].Payload,
-					Topic:   consumer.Topic(),
-				}
+			//for {
+			msg, err := consumer.client.server.Consume(consumer.topic, consumer.consumerName)
+			if err != nil {
+				log.Debug("Consumer's goroutine cannot consume from (" + consumer.topic +
+					"," + consumer.consumerName + "): " + err.Error())
+				break
 			}
+
+			if len(msg) != 1 {
+				//log.Debug("Consumer's goroutine cannot consume from (" + consumer.topic +
+				//	"," + consumer.consumerName + "): message len(" + strconv.Itoa(len(msg)) +
+				//	") is not 1")
+				break
+			}
+
+			//consumer.messageCh <- ConsumerMessage{
+			//	MsgID:   msg[0].MsgID,
+			//	Payload: msg[0].Payload,
+			//	Topic:   consumer.Topic(),
+			//}
+			//}
 		}
 	}
 

@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"context"
 	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/kv"
@@ -117,7 +118,7 @@ func (k *kafkaClient) CreateConsumerGroup(groupID string) error {
 	return nil
 }
 
-func (k *kafkaClient) ExistConsumerGroup(groupID string) (bool, error) {
+func (k *kafkaClient) ExistConsumerGroup(groupID string) (bool, *Consumer) {
 	req := &sarama.DescribeGroupsRequest{}
 	req.AddGroup(groupID)
 	b, err := k.c.Broker(0)
@@ -126,11 +127,11 @@ func (k *kafkaClient) ExistConsumerGroup(groupID string) (bool, error) {
 	}
 	rep, err := b.DescribeGroups(req)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 	log.Debug("topic_errors:", zap.Any("topic_errors", rep.Groups))
 	if rep.Groups[0].State == "Dead" {
-		return false, err
+		return false, &Consumer{GroupName: groupID}
 	}
 	return true, nil
 }
@@ -156,9 +157,68 @@ func (k *kafkaClient) Produce(topicName string, messages []ProducerMessage) erro
 	}
 	return nil
 }
-func (k *kafkaClient) Consume(topicName string, groupID string) ([]ConsumerMessage, error) {
-	group, err := sarama.NewConsumerGroupFromClient(groupID, k.c)
 
+type exampleConsumerGroupHandler struct{}
+
+func (exampleConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+	sess.ResetOffset("test_topic_1", 0, 3, "modified_meta")
+	return nil
+}
+func (exampleConsumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error {
+	return nil
+
+}
+func (h exampleConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	fmt.Println(claim.InitialOffset())
+
+	for msg := range claim.Messages() {
+		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
+		sess.MarkMessage(msg, "")
+		//fmt.Println(string(msg.Value))
+
+	}
+	return nil
+}
+
+func (k *kafkaClient) Consume(topicName string, groupID string) ([]ConsumerMessage, error) {
+	ll, ok := k.channelMu.Load(topicName)
+	if !ok {
+		return nil, fmt.Errorf("topic name = %s not exist", topicName)
+	}
+	lock, ok := ll.(*sync.Mutex)
+	if !ok {
+		return nil, fmt.Errorf("get mutex failed, topic name = %s", topicName)
+	}
+	lock.Lock()
+	defer lock.Unlock()
+
+	group, err := sarama.NewConsumerGroupFromClient(groupID, k.c)
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = group.Close() }()
+
+	// Track errors
+	go func() {
+		for err := range group.Errors() {
+			fmt.Println("ERROR", err)
+		}
+	}()
+
+	// Iterate over consumer sessions.
+	ctx := context.Background()
+	for {
+		topics := []string{topicName}
+		handler := exampleConsumerGroupHandler{}
+
+		// `Consume` should be called inside an infinite loop, when a
+		// server-side rebalance happens, the consumer session will need to be
+		// recreated to get the new claims
+		err := group.Consume(ctx, topics, handler)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (k *kafkaClient) RegisterConsumer(consumer *Consumer) {
