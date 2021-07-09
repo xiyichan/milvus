@@ -75,7 +75,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 }
 
 func (kc *kafkaClient) EarliestMessageID() MessageID {
-	return &kafkaID{messageID: sarama.ConsumerMessage{Offset: sarama.OffsetNewest}}
+	return &kafkaID{messageID: &sarama.ConsumerMessage{Offset: sarama.OffsetNewest}}
 }
 
 func (kc *kafkaClient) StringToMsgID(id string) (MessageID, error) {
@@ -83,7 +83,7 @@ func (kc *kafkaClient) StringToMsgID(id string) (MessageID, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &kafkaID{messageID: sarama.ConsumerMessage{Offset: offset}}, nil
+	return &kafkaID{messageID: &sarama.ConsumerMessage{Offset: offset}}, nil
 }
 
 func (kc *kafkaClient) BytesToMsgID(id []byte) (MessageID, error) {
@@ -91,7 +91,7 @@ func (kc *kafkaClient) BytesToMsgID(id []byte) (MessageID, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &kafkaID{messageID: sarama.ConsumerMessage{Offset: offset}}, nil
+	return &kafkaID{messageID: &sarama.ConsumerMessage{Offset: offset}}, nil
 }
 
 func (kc *kafkaClient) Close() {
