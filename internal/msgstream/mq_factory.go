@@ -13,7 +13,6 @@ package msgstream
 
 import (
 	"context"
-
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/log"
@@ -122,7 +121,7 @@ func NewRmsFactory(rocksmqPath string) Factory {
 type KmsFactory struct {
 	dispatcherFactory ProtoUDFactory
 	// the following members must be public, so that mapstructure.Decode() can access them
-	KafkaAddress   []string
+	Broker         []string
 	ReceiveBufSize int64
 	KafkaBufSize   int64
 }
@@ -136,7 +135,7 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 }
 
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, &sarama.Config{})
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, sarama.Config{Version: sarama.V2_8_0_0})
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +143,7 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 }
 
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, &sarama.Config{})
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, sarama.Config{Version: sarama.V2_8_0_0})
 	if err != nil {
 		return nil, err
 	}
@@ -155,10 +154,10 @@ func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
 	return f.NewMsgStream(ctx)
 }
 func NewKmsFactory() Factory {
-	f := &PmsFactory{
+	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
 		ReceiveBufSize:    64,
-		PulsarBufSize:     64,
+		KafkaBufSize:      64,
 	}
 	return f
 }

@@ -1,9 +1,11 @@
 package mqclient
 
-import "github.com/milvus-io/milvus/internal/util/kafka/client/kafka"
+import (
+	"github.com/Shopify/sarama"
+)
 
 type kafkaMessage struct {
-	msg kafka.ConsumerMessage
+	msg sarama.ConsumerMessage
 }
 
 func (km *kafkaMessage) Topic() string {
@@ -15,9 +17,10 @@ func (km *kafkaMessage) Properties() map[string]string {
 }
 
 func (km *kafkaMessage) Payload() []byte {
-	return km.msg.Payload
+	return km.msg.Value
 }
 
 func (km *kafkaMessage) ID() MessageID {
-	return &rmqID{messageID: km.msg.MsgID}
+	kid := &kafkaID{messageID: km.msg}
+	return kid
 }

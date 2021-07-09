@@ -2,15 +2,15 @@ package mqclient
 
 import (
 	"encoding/binary"
-	"github.com/milvus-io/milvus/internal/util/kafka/server/kafka"
+	"github.com/Shopify/sarama"
 )
 
 type kafkaID struct {
-	messageID kafka.Offset
+	messageID sarama.ConsumerMessage
 }
 
 func (kid *kafkaID) Serialize() []byte {
-	return SerializeKafkaID(kid.messageID)
+	return SerializeKafkaID(kid.messageID.Offset)
 }
 
 func SerializeKafkaID(messageID int64) []byte {
