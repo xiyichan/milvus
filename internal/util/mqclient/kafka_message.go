@@ -5,7 +5,7 @@ import (
 )
 
 type kafkaMessage struct {
-	msg sarama.ConsumerMessage
+	msg *sarama.ConsumerMessage
 }
 
 func (km *kafkaMessage) Topic() string {

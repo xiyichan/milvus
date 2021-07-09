@@ -3,6 +3,8 @@ package mqclient
 import (
 	"errors"
 	"github.com/Shopify/sarama"
+
+	"context"
 )
 
 type kafkaConsumer struct {
@@ -11,21 +13,23 @@ type kafkaConsumer struct {
 	msgChannel chan ConsumerMessage
 	topicName  string
 	groupID    string
+	hasSeek    bool
 }
-type exampleConsumerGroupHandler struct{}
 
-func (exampleConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+func (kc kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 
 	return nil
 }
-func (exampleConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
+func (kc kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 
 	return nil
 
 }
-func (h exampleConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+func (kc kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
+		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
 		//fmt.Println(string(msg.Value))
 	}
@@ -33,11 +37,29 @@ func (h exampleConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSessi
 }
 
 func (kc *kafkaConsumer) Subscription() string {
-
-	return ""
+	return kc.groupID
 }
 func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
+	if kc.msgChannel == nil {
+		kc.msgChannel = make(chan ConsumerMessage)
+		//if !kc.hasSeek {
+		//	kc.c.SeekByTime(time.Unix(0, 0))
+		//}
+		ctx := context.Background()
+		for {
 
+			topics := []string{kc.topicName}
+			handler := kafkaConsumer{}
+
+			// `Consume` should be called inside an infinite loop, when a
+			// server-side rebalance happens, the consumer session will need to be
+			// recreated to get the new claims
+			err := kc.g.Consume(ctx, topics, handler)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 	return kc.msgChannel
 }
 func (kc *kafkaConsumer) Seek(id MessageID) error {

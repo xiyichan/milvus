@@ -6,7 +6,7 @@ import (
 )
 
 type kafkaID struct {
-	messageID sarama.ConsumerMessage
+	messageID *sarama.ConsumerMessage
 }
 
 func (kid *kafkaID) Serialize() []byte {
