@@ -209,6 +209,7 @@ func main() {
 	}
 
 	var localMsg = false
+	var kafka = false
 	role := roles.MilvusRoles{}
 	switch serverType {
 	case roleRootCoord:
@@ -243,6 +244,7 @@ func main() {
 		role.EnableIndexNode = true
 		role.EnableMsgStreamCoord = true
 		localMsg = true
+		kafka = true
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown server type = %s\n", serverType)
 		os.Exit(-1)
@@ -267,7 +269,7 @@ func main() {
 			panic(err)
 		}
 		defer removePidFile(fd)
-		role.Run(localMsg, svrAlias)
+		role.Run(localMsg, kafka, svrAlias)
 	case "stop":
 		if err := stopPid(filename, runtimeDir); err != nil {
 			panic(err)

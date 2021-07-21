@@ -38,9 +38,14 @@ import (
 	"github.com/milvus-io/milvus/internal/util/trace"
 )
 
-func newMsgFactory(localMsg bool, rocksmqPath string) msgstream.Factory {
+func newMsgFactory(localMsg bool, kafka bool, rocksmqPath string) msgstream.Factory {
 	if localMsg {
-		return msgstream.NewRmsFactory(rocksmqPath)
+		if kafka {
+			return msgstream.NewKmsFactory()
+		} else {
+			return msgstream.NewRmsFactory(rocksmqPath)
+		}
+
 	}
 	return msgstream.NewPmsFactory()
 }
@@ -74,7 +79,7 @@ func (mr *MilvusRoles) setLogConfigFilename(filename string) *log.Config {
 	return cfg
 }
 
-func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool) *components.RootCoord {
+func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool, kafka bool) *components.RootCoord {
 	var rc *components.RootCoord
 	var wg sync.WaitGroup
 
@@ -87,7 +92,7 @@ func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool) *compone
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, rootcoord.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg, kafka, rootcoord.Params.RocksmqPath)
 		var err error
 		rc, err = components.NewRootCoord(ctx, factory)
 		if err != nil {
@@ -102,7 +107,7 @@ func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool) *compone
 	return rc
 }
 
-func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string) *components.Proxy {
+func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, kafka bool, alias string) *components.Proxy {
 	var pn *components.Proxy
 	var wg sync.WaitGroup
 
@@ -116,7 +121,7 @@ func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, proxy.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg, kafka, proxy.Params.RocksmqPath)
 		var err error
 		pn, err = components.NewProxy(ctx, factory)
 		if err != nil {
@@ -131,7 +136,7 @@ func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string
 	return pn
 }
 
-func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *components.QueryCoord {
+func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool, kafka bool) *components.QueryCoord {
 	var qs *components.QueryCoord
 	var wg sync.WaitGroup
 
@@ -146,7 +151,7 @@ func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *compon
 
 		// FIXME(yukun): newMsgFactory requires parameter rocksmqPath, but won't be used here
 		// so hardcode the path to /tmp/invalid_milvus_rdb
-		factory := newMsgFactory(localMsg, "/tmp/invalid_milvus_rdb")
+		factory := newMsgFactory(localMsg, kafka, "/tmp/invalid_milvus_rdb")
 		var err error
 		qs, err = components.NewQueryCoord(ctx, factory)
 		if err != nil {
@@ -161,7 +166,7 @@ func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *compon
 	return qs
 }
 
-func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias string) *components.QueryNode {
+func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, kafka bool, alias string) *components.QueryNode {
 	var qn *components.QueryNode
 	var wg sync.WaitGroup
 
@@ -175,7 +180,7 @@ func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias st
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, querynode.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg, kafka, querynode.Params.RocksmqPath)
 		var err error
 		qn, err = components.NewQueryNode(ctx, factory)
 		if err != nil {
@@ -190,7 +195,7 @@ func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias st
 	return qn
 }
 
-func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool) *components.DataCoord {
+func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool, kafka bool) *components.DataCoord {
 	var ds *components.DataCoord
 	var wg sync.WaitGroup
 
@@ -203,7 +208,7 @@ func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool) *compone
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, datacoord.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg, kafka, datacoord.Params.RocksmqPath)
 		var err error
 		ds, err = components.NewDataCoord(ctx, factory)
 		if err != nil {
@@ -218,7 +223,7 @@ func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool) *compone
 	return ds
 }
 
-func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool, alias string) *components.DataNode {
+func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool, kafka bool, alias string) *components.DataNode {
 	var dn *components.DataNode
 	var wg sync.WaitGroup
 
@@ -232,7 +237,7 @@ func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool, alias str
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, datanode.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg, kafka, datanode.Params.RocksmqPath)
 		var err error
 		dn, err = components.NewDataNode(ctx, factory)
 		if err != nil {
@@ -322,7 +327,7 @@ func (mr *MilvusRoles) runMsgStreamCoord(ctx context.Context) *components.MsgStr
 	return mss
 }
 
-func (mr *MilvusRoles) Run(localMsg bool, alias string) {
+func (mr *MilvusRoles) Run(localMsg bool, kafka bool, alias string) {
 	if os.Getenv("DEPLOY_MODE") == "STANDALONE" {
 		closer := trace.InitTracing("standalone")
 		if closer != nil {
@@ -342,7 +347,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var rc *components.RootCoord
 	if mr.EnableRootCoord {
-		rc = mr.runRootCoord(ctx, localMsg)
+		rc = mr.runRootCoord(ctx, localMsg, kafka)
 		if rc != nil {
 			defer rc.Stop()
 		}
@@ -350,7 +355,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var pn *components.Proxy
 	if mr.EnableProxy {
-		pn = mr.runProxy(ctx, localMsg, alias)
+		pn = mr.runProxy(ctx, localMsg, kafka, alias)
 		if pn != nil {
 			defer pn.Stop()
 		}
@@ -358,7 +363,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var qs *components.QueryCoord
 	if mr.EnableQueryCoord {
-		qs = mr.runQueryCoord(ctx, localMsg)
+		qs = mr.runQueryCoord(ctx, kafka, localMsg)
 		if qs != nil {
 			defer qs.Stop()
 		}
@@ -366,7 +371,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var qn *components.QueryNode
 	if mr.EnableQueryNode {
-		qn = mr.runQueryNode(ctx, localMsg, alias)
+		qn = mr.runQueryNode(ctx, localMsg, kafka, alias)
 		if qn != nil {
 			defer qn.Stop()
 		}
@@ -374,7 +379,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var ds *components.DataCoord
 	if mr.EnableDataCoord {
-		ds = mr.runDataCoord(ctx, localMsg)
+		ds = mr.runDataCoord(ctx, kafka, localMsg)
 		if ds != nil {
 			defer ds.Stop()
 		}
@@ -382,7 +387,7 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	var dn *components.DataNode
 	if mr.EnableDataNode {
-		dn = mr.runDataNode(ctx, localMsg, alias)
+		dn = mr.runDataNode(ctx, localMsg, kafka, alias)
 		if dn != nil {
 			defer dn.Stop()
 		}
