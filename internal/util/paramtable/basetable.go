@@ -120,7 +120,7 @@ func (gp *BaseTable) tryloadFromEnv() {
 	}
 
 	kafkaAddress := os.Getenv("KAFKA_ADDRESS")
-	if pulsarAddress == "" {
+	if kafkaAddress == "" {
 		kafkaHost, err := gp.Load("kafka.address")
 		if err != nil {
 			panic(err)
@@ -129,7 +129,7 @@ func (gp *BaseTable) tryloadFromEnv() {
 		if err != nil {
 			panic(err)
 		}
-		pulsarAddress = kafkaHost + ":" + port
+		kafkaAddress = kafkaHost + ":" + port
 	}
 	err = gp.Save("_KafkaAddress", kafkaAddress)
 	if err != nil {
