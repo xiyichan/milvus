@@ -135,7 +135,9 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 }
 
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, sarama.Config{Version: sarama.V2_8_0_0})
+	config := sarama.NewConfig()
+	config.Version = sarama.V2_8_0_0
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, config)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +145,9 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 }
 
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, sarama.Config{Version: sarama.V2_8_0_0})
+	config := sarama.NewConfig()
+	config.Version = sarama.V2_8_0_0
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, config)
 	if err != nil {
 		return nil, err
 	}
