@@ -106,10 +106,11 @@ func TestDataSyncService_Start(t *testing.T) {
 	// pulsar produce
 	const receiveBufSize = 1024
 	pulsarURL := Params.PulsarAddress
-
+	kafkaURL := Params.KafkaAddress
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"receiveBufSize": receiveBufSize,
+		"kafkaAddress":   kafkaURL,
 		"pulsarAddress":  pulsarURL,
 		"pulsarBufSize":  1024}
 	err := msFactory.SetParams(m)

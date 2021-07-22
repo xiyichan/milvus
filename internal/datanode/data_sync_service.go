@@ -95,6 +95,7 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarAddress,
+		"KafkaAddress":   Params.KafkaAddress,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024,
 	}

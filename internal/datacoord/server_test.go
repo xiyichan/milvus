@@ -761,6 +761,7 @@ func newTestServer(t *testing.T, receiveCh chan interface{}) *Server {
 	factory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"receiveBufSize": 1024,
 		"pulsarBufSize":  1024,
 	}

@@ -157,6 +157,7 @@ func (node *Proxy) Init() error {
 
 	m := map[string]interface{}{
 		"PulsarAddress": Params.PulsarAddress,
+		"KafkaAddress":  Params.KafkaAddress,
 		"PulsarBufSize": 1024}
 	err := node.msFactory.SetParams(m)
 	if err != nil {

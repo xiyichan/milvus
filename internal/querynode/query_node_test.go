@@ -199,10 +199,12 @@ func newMessageStreamFactory() (msgstream.Factory, error) {
 	const receiveBufSize = 1024
 
 	pulsarURL := Params.PulsarAddress
+	kafkaURL := Params.KafkaAddress
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"receiveBufSize": receiveBufSize,
 		"pulsarAddress":  pulsarURL,
+		"kafkaAddress":   kafkaURL,
 		"pulsarBufSize":  1024}
 	err := msFactory.SetParams(m)
 	return msFactory, err

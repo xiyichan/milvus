@@ -59,6 +59,7 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarAddress":  Params.PulsarAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
@@ -167,6 +168,7 @@ func TestFlushSegment(t *testing.T) {
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarAddress":  Params.PulsarAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
@@ -277,6 +279,7 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarAddress":  Params.PulsarAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
