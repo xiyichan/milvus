@@ -31,6 +31,7 @@ func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, e
 
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
 	pp, err := sarama.NewSyncProducerFromClient(kc.client)
+	log.Error("kafka create sync producer , error", zap.Error(err))
 	if err != nil {
 		return nil, err
 	}
