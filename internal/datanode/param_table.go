@@ -156,7 +156,7 @@ func (p *ParamTable) initPulsarAddress() {
 }
 
 func (p *ParamTable) initKafkaAddress() {
-	url, err := p.Load("_PulsarAddress")
+	url, err := p.Load("_KafkaAddress")
 	if err != nil {
 		panic(err)
 	}
