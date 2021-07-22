@@ -16,9 +16,9 @@ type kafkaClient struct {
 var kc *kafkaClient
 var kafkaOnce sync.Once
 
-func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
+func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, error) {
 	once.Do(func() {
-		c, err := sarama.NewClient(broker, opts)
+		c, err := sarama.NewClient([]string{broker}, opts)
 		if err != nil {
 			log.Error("Set kafka client failed, error", zap.Error(err))
 			return

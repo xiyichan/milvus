@@ -121,7 +121,7 @@ func NewRmsFactory(rocksmqPath string) Factory {
 type KmsFactory struct {
 	dispatcherFactory ProtoUDFactory
 	// the following members must be public, so that mapstructure.Decode() can access them
-	Broker         []string
+	KafkaAddress   string
 	ReceiveBufSize int64
 	KafkaBufSize   int64
 }
@@ -137,7 +137,7 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.Broker, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
 	if err != nil {
 		return nil, err
 	}
