@@ -31,8 +31,8 @@ func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, e
 
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
 	pp, err := sarama.NewSyncProducerFromClient(kc.client)
-	log.Error("kafka create sync producer , error", zap.Error(err))
 	if err != nil {
+		log.Error("kafka create sync producer , error", zap.Error(err))
 		return nil, err
 	}
 	if pp == nil {
@@ -45,14 +45,15 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, kc.client)
 	if err != nil {
+		log.Error("kafka create sync producer , error", zap.Error(err))
 		panic(err)
 	}
 	defer func() { _ = group.Close() }()
 
 	// Track errors
 	go func() {
-		for _ = range group.Errors() {
-			//log.Debug(err)
+		for err = range group.Errors() {
+			log.Error("kafka create sync producer , error", zap.Error(err))
 		}
 	}()
 
