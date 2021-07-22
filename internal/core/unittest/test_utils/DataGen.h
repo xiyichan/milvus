@@ -18,6 +18,7 @@
 #include "segcore/SegmentSealed.h"
 #include "Constants.h"
 #include <boost/algorithm/string/predicate.hpp>
+#include "segcore/SegmentSealed.h"
 
 #include <knowhere/index/vector_index/VecIndex.h>
 #include <knowhere/index/vector_index/adapter/VectorAdapter.h>
@@ -56,15 +57,15 @@ struct GeneratedData {
     friend GeneratedData
     DataGen(SchemaPtr schema, int64_t N, uint64_t seed);
     void
-    generate_rows(int N, SchemaPtr schema);
+    generate_rows(int64_t N, SchemaPtr schema);
 };
 
 inline void
-GeneratedData::generate_rows(int N, SchemaPtr schema) {
+GeneratedData::generate_rows(int64_t N, SchemaPtr schema) {
     std::vector<int> offset_infos(schema->size() + 1, 0);
     auto sizeof_infos = schema->get_sizeof_infos();
     std::partial_sum(sizeof_infos.begin(), sizeof_infos.end(), offset_infos.begin() + 1);
-    auto len_per_row = offset_infos.back();
+    int64_t len_per_row = offset_infos.back();
     assert(len_per_row == schema->get_total_sizeof());
 
     std::vector<char> result(len_per_row * N);
@@ -103,13 +104,17 @@ DataGen(SchemaPtr schema, int64_t N, uint64_t seed = 42) {
         switch (field.get_data_type()) {
             case engine::DataType::VECTOR_FLOAT: {
                 auto dim = field.get_dim();
-                vector<float> final;
+                vector<float> final(dim * N);
                 bool is_ip = starts_with(field.get_name().get(), "normalized");
+#pragma omp parallel for
                 for (int n = 0; n < N; ++n) {
                     vector<float> data(dim);
                     float sum = 0;
+
+                    std::default_random_engine er2(seed + n);
+                    std::normal_distribution<> distr2(0, 1);
                     for (auto& x : data) {
-                        x = distr(er) + offset;
+                        x = distr2(er2) + offset;
                         sum += x * x;
                     }
                     if (is_ip) {
@@ -119,7 +124,7 @@ DataGen(SchemaPtr schema, int64_t N, uint64_t seed = 42) {
                         }
                     }
 
-                    final.insert(final.end(), data.begin(), data.end());
+                    std::copy(data.begin(), data.end(), final.begin() + dim * n);
                 }
                 insert_cols(final);
                 break;
@@ -272,16 +277,16 @@ CreateBinaryPlaceholderGroupFromBlob(int64_t num_queries, int64_t dim, const uin
 }
 
 inline json
-QueryResultToJson(const QueryResult& qr) {
-    int64_t num_queries = qr.num_queries_;
-    int64_t topk = qr.topK_;
+SearchResultToJson(const SearchResult& sr) {
+    int64_t num_queries = sr.num_queries_;
+    int64_t topk = sr.topk_;
     std::vector<std::vector<std::string>> results;
     for (int q = 0; q < num_queries; ++q) {
         std::vector<std::string> result;
         for (int k = 0; k < topk; ++k) {
             int index = q * topk + k;
-            result.emplace_back(std::to_string(qr.internal_seg_offsets_[index]) + "->" +
-                                std::to_string(qr.result_distances_[index]));
+            result.emplace_back(std::to_string(sr.internal_seg_offsets_[index]) + "->" +
+                                std::to_string(sr.result_distances_[index]));
         }
         results.emplace_back(std::move(result));
     }
@@ -317,11 +322,19 @@ SealedLoader(const GeneratedData& dataset, SegmentSealed& seg) {
     }
 }
 
+inline std::unique_ptr<SegmentSealed>
+SealedCreator(SchemaPtr schema, const GeneratedData& dataset, const LoadIndexInfo& index_info) {
+    auto segment = CreateSealedSegment(schema);
+    SealedLoader(dataset, *segment);
+    segment->LoadIndex(index_info);
+    return segment;
+}
+
 inline knowhere::VecIndexPtr
 GenIndexing(int64_t N, int64_t dim, const float* vec) {
+    // {knowhere::IndexParams::nprobe, 10},
     auto conf = knowhere::Config{{knowhere::meta::DIM, dim},
-                                 {knowhere::IndexParams::nlist, 100},
-                                 {knowhere::IndexParams::nprobe, 10},
+                                 {knowhere::IndexParams::nlist, 1024},
                                  {knowhere::Metric::TYPE, milvus::knowhere::Metric::L2},
                                  {knowhere::meta::DEVICEID, 0}};
     auto database = knowhere::GenDataset(N, dim, vec);

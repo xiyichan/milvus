@@ -65,6 +65,11 @@ func NewSession(ctx context.Context, metaRoot string, etcdEndpoints []string) *S
 		if err != nil {
 			return err
 		}
+		ctx2, cancel2 := context.WithTimeout(session.ctx, 5*time.Second)
+		defer cancel2()
+		if _, err = etcdCli.Get(ctx2, "health"); err != nil {
+			return err
+		}
 		session.etcdCli = etcdCli
 		return nil
 	}
@@ -164,6 +169,7 @@ func (s *Session) getServerIDWithKey(key string, retryTimes uint) (int64, error)
 // it is false. Otherwise, set it to true.
 func (s *Session) registerService() (<-chan *clientv3.LeaseKeepAliveResponse, error) {
 	var ch <-chan *clientv3.LeaseKeepAliveResponse
+	log.Debug("Session Register Begin")
 	registerFn := func() error {
 		resp, err := s.etcdCli.Grant(s.ctx, DefaultTTL)
 		if err != nil {
@@ -202,6 +208,7 @@ func (s *Session) registerService() (<-chan *clientv3.LeaseKeepAliveResponse, er
 			fmt.Printf("keep alive error %s\n", err)
 			return err
 		}
+		log.Debug("Session Register End", zap.Int64("ServerID", s.ServerID))
 		return nil
 	}
 	err := retry.Do(s.ctx, registerFn, retry.Attempts(DefaultRetryTimes), retry.Sleep(500*time.Millisecond))
@@ -223,10 +230,12 @@ func (s *Session) processKeepAliveResponse(ch <-chan *clientv3.LeaseKeepAliveRes
 				return
 			case resp, ok := <-ch:
 				if !ok {
+					log.Debug("session keepalive channel closed")
 					close(failCh)
 					return
 				}
 				if resp == nil {
+					log.Debug("session keepalive response failed")
 					close(failCh)
 					return
 				}
@@ -312,6 +321,7 @@ func (s *Session) WatchServices(prefix string, revision int64) (eventChannel <-c
 						}
 						eventType = SessionDelEvent
 					}
+					log.Debug("WatchService", zap.Any("event type", eventType))
 					eventCh <- &SessionEvent{
 						EventType: eventType,
 						Session:   session,

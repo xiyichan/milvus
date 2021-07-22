@@ -26,24 +26,31 @@ class ResponseChecker:
         """
         result = True
         if self.check_task is None:
+            # Interface normal return check
             result = self.assert_succ(self.succ, True)
 
         elif self.check_task == CheckTasks.err_res:
+            # Interface return error code and error message check
             result = self.assert_exception(self.response, self.succ, self.check_items)
 
         elif self.check_task == CheckTasks.ccr:
+            # Connection interface response check
             result = self.check_value_equal(self.response, self.func_name, self.check_items)
 
         elif self.check_task == CheckTasks.check_collection_property:
+            # Collection interface response check
             result = self.check_collection_property(self.response, self.func_name, self.check_items)
 
         elif self.check_task == CheckTasks.check_partition_property:
+            # Partition interface response check
             result = self.check_partition_property(self.response, self.func_name, self.check_items)
 
         elif self.check_task == CheckTasks.check_search_results:
-            result = self.check_search_results(self.response, self.check_items)
+            # Search interface of collection and partition that response check
+            result = self.check_search_results(self.response, self.func_name, self.check_items)
 
         elif self.check_task == CheckTasks.check_query_results:
+            # Query interface of collection and partition that response check
             result = self.check_query_results(self.response, self.func_name, self.check_items)
 
         # Add check_items here if something new need verify
@@ -61,7 +68,7 @@ class ResponseChecker:
         assert len(error_dict) > 0
         if isinstance(res, Error):
             error_code = error_dict[ct.err_code]
-            assert res.code == error_code and error_dict[ct.err_msg] in res.message
+            assert res.code == error_code or error_dict[ct.err_msg] in res.message
         else:
             log.error("[CheckFunc] Response of API is not an error: %s" % str(res))
             assert False
@@ -147,15 +154,23 @@ class ResponseChecker:
         return True
 
     @staticmethod
-    def check_search_results(search_res, check_items):
+    def check_search_results(search_res, func_name, check_items):
         """
         target: check the search results
         method: 1. check the query number
-                2. check the limit(topK)
+                2. check the limit(topK) and ids
                 3. check the distance
         expected: check the search is ok
         """
         log.info("search_results_check: checking the searching results")
+        if func_name != 'search':
+            log.warning("The function name is {} rather than {}".format(func_name, "search"))
+        if len(check_items) == 0:
+            raise Exception("No expect values found in the check task")
+        if check_items.get("_async", None):
+            if check_items["_async"]:
+                search_res.done()
+                search_res = search_res.result()
         if len(search_res) != check_items["nq"]:
             log.error("search_results_check: Numbers of query searched (%d) "
                       "is not equal with expected (%d)"
@@ -164,16 +179,22 @@ class ResponseChecker:
         else:
             log.info("search_results_check: Numbers of query searched is correct")
         for hits in search_res:
-            if len(hits) != check_items["limit"]:
+            if (len(hits) != check_items["limit"]) \
+                    or (len(hits.ids) != check_items["limit"]):
                 log.error("search_results_check: limit(topK) searched (%d) "
                           "is not equal with expected (%d)"
                           % (len(hits), check_items["limit"]))
                 assert len(hits) == check_items["limit"]
                 assert len(hits.ids) == check_items["limit"]
             else:
-                log.info("search_results_check: limit (topK) "
-                         "searched for each query is correct")
-        log.info("search_results_check: search_results_check: checked the searching results")
+                ids_match = pc.list_contain_check(list(hits.ids),
+                                                  list(check_items["ids"]))
+                if ids_match:
+                    log.info("search_results_check: limit (topK) and "
+                             "ids searched for each query are correct")
+                else:
+                    log.error("search_results_check: ids searched not match")
+                    assert ids_match
         return True
 
     @staticmethod
@@ -185,8 +206,9 @@ class ResponseChecker:
         if len(check_items) == 0:
             raise Exception("No expect values found in the check task")
         exp_res = check_items.get("exp_res", None)
+        with_vec = check_items.get("with_vec", False)
         if exp_res and isinstance(query_res, list):
-            assert pc.equal_entities_list(exp=exp_res, actual=query_res)
+            assert pc.equal_entities_list(exp=exp_res, actual=query_res, with_vec=with_vec)
             # assert len(exp_res) == len(query_res)
             # for i in range(len(exp_res)):
             #     assert_entity_equal(exp=exp_res[i], actual=query_res[i])

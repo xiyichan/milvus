@@ -13,6 +13,7 @@ package grpcquerycoordclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -93,12 +95,20 @@ func (c *Client) connect(retryOptions ...retry.Option) error {
 			grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
 			grpc.WithUnaryInterceptor(
 				grpc_middleware.ChainUnaryClient(
-					grpc_retry.UnaryClientInterceptor(),
+					grpc_retry.UnaryClientInterceptor(
+						grpc_retry.WithMax(3),
+						grpc_retry.WithPerRetryTimeout(time.Second*10),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.UnaryClientInterceptor(opts...),
 				)),
 			grpc.WithStreamInterceptor(
 				grpc_middleware.ChainStreamClient(
-					grpc_retry.StreamClientInterceptor(),
+					grpc_retry.StreamClientInterceptor(
+						grpc_retry.WithMax(3),
+						grpc_retry.WithPerRetryTimeout(time.Second*10),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.StreamClientInterceptor(opts...),
 				)),
 		)
@@ -124,9 +134,10 @@ func (c *Client) recall(caller func() (interface{}, error)) (interface{}, error)
 	if err == nil {
 		return ret, nil
 	}
+	log.Debug("QueryCoord Client grpc error", zap.Error(err))
 	err = c.connect()
 	if err != nil {
-		return ret, err
+		return ret, errors.New("Connect to querycoord failed with error:\n" + err.Error())
 	}
 	ret, err = caller()
 	if err == nil {

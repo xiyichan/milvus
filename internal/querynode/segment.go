@@ -34,7 +34,9 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
+	"github.com/milvus-io/milvus/internal/storage"
 )
 
 type segmentType int32
@@ -46,6 +48,49 @@ const (
 	segmentTypeIndexing
 )
 
+type VectorFieldInfo struct {
+	mu              sync.RWMutex
+	fieldBinlog     *datapb.FieldBinlog
+	rawDataInMemory bool
+	rawData         map[string]storage.FieldData // map[binlogPath]FieldData
+}
+
+func newVectorFieldInfo(fieldBinlog *datapb.FieldBinlog) *VectorFieldInfo {
+	return &VectorFieldInfo{
+		fieldBinlog:     fieldBinlog,
+		rawDataInMemory: false,
+		rawData:         make(map[string]storage.FieldData),
+	}
+}
+
+func (v *VectorFieldInfo) setRawData(binlogPath string, data storage.FieldData) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.rawData[binlogPath] = data
+}
+
+func (v *VectorFieldInfo) getRawData(binlogPath string) storage.FieldData {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if data, ok := v.rawData[binlogPath]; ok {
+		return data
+	}
+	return nil
+}
+
+func (v *VectorFieldInfo) setRawDataInMemory(flag bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.rawDataInMemory = flag
+}
+
+func (v *VectorFieldInfo) getRawDataInMemory() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.rawDataInMemory
+}
+
+//--------------------------------------------------------------------------------------
 type Segment struct {
 	segmentPtr C.CSegmentInterface
 
@@ -70,6 +115,9 @@ type Segment struct {
 
 	paramMutex sync.RWMutex // guards index
 	indexInfos map[int64]*indexInfo
+
+	vectorFieldMutex sync.RWMutex // guards vectorFieldInfos
+	vectorFieldInfos map[UniqueID]*VectorFieldInfo
 }
 
 //-------------------------------------------------------------------------------------- common interfaces
@@ -121,12 +169,26 @@ func (s *Segment) setOnService(onService bool) {
 	s.onService = onService
 }
 
+func (s *Segment) setVectorFieldInfo(fieldID UniqueID, info *VectorFieldInfo) {
+	s.vectorFieldMutex.Lock()
+	defer s.vectorFieldMutex.Unlock()
+	s.vectorFieldInfos[fieldID] = info
+}
+
+func (s *Segment) getVectorFieldInfo(fieldID UniqueID) (*VectorFieldInfo, error) {
+	s.vectorFieldMutex.Lock()
+	defer s.vectorFieldMutex.Unlock()
+	if info, ok := s.vectorFieldInfos[fieldID]; ok {
+		return info, nil
+	}
+	return nil, errors.New("Invalid fieldID " + strconv.Itoa(int(fieldID)))
+}
+
 func newSegment(collection *Collection, segmentID int64, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, segType segmentType, onService bool) *Segment {
 	/*
 		CSegmentInterface
 		NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type);
 	*/
-	indexInfos := make(map[int64]*indexInfo)
 	var segmentPtr C.CSegmentInterface
 	switch segType {
 	case segmentTypeInvalid:
@@ -143,18 +205,19 @@ func newSegment(collection *Collection, segmentID int64, partitionID UniqueID, c
 
 	log.Debug("create segment", zap.Int64("segmentID", segmentID))
 
-	var newSegment = &Segment{
-		segmentPtr:   segmentPtr,
-		segmentType:  segType,
-		segmentID:    segmentID,
-		partitionID:  partitionID,
-		collectionID: collectionID,
-		vChannelID:   vChannelID,
-		onService:    onService,
-		indexInfos:   indexInfos,
+	var segment = &Segment{
+		segmentPtr:       segmentPtr,
+		segmentType:      segType,
+		segmentID:        segmentID,
+		partitionID:      partitionID,
+		collectionID:     collectionID,
+		vChannelID:       vChannelID,
+		onService:        onService,
+		indexInfos:       make(map[int64]*indexInfo),
+		vectorFieldInfos: make(map[UniqueID]*VectorFieldInfo),
 	}
 
-	return newSegment
+	return segment
 }
 
 func deleteSegment(segment *Segment) {
@@ -176,13 +239,13 @@ func (s *Segment) getRowCount() int64 {
 		long int
 		getRowCount(CSegmentInterface c_segment);
 	*/
-	segmentPtrIsNil := s.segmentPtr == nil
-	log.Debug("QueryNode::Segment::getRowCount", zap.Any("segmentPtrIsNil", segmentPtrIsNil))
+	//segmentPtrIsNil := s.segmentPtr == nil
+	//log.Debug("QueryNode::Segment::getRowCount", zap.Any("segmentPtrIsNil", segmentPtrIsNil))
 	if s.segmentPtr == nil {
 		return -1
 	}
 	var rowCount = C.GetRowCount(s.segmentPtr)
-	log.Debug("QueryNode::Segment::getRowCount", zap.Any("rowCount", rowCount))
+	//log.Debug("QueryNode::Segment::getRowCount", zap.Any("rowCount", rowCount))
 	return int64(rowCount)
 }
 
@@ -211,7 +274,7 @@ func (s *Segment) getMemSize() int64 {
 	return int64(memoryUsageInBytes)
 }
 
-func (s *Segment) segmentSearch(plan *Plan,
+func (s *Segment) search(plan *SearchPlan,
 	searchRequests []*searchRequest,
 	timestamp []Timestamp) (*SearchResult, error) {
 	/*
@@ -232,12 +295,11 @@ func (s *Segment) segmentSearch(plan *Plan,
 	}
 
 	var searchResult SearchResult
-	var cTimestamp = (*C.ulong)(&timestamp[0])
-	var cPlaceHolder = (*C.CPlaceholderGroup)(&cPlaceholderGroups[0])
-	var cNumGroups = C.int(len(searchRequests))
+	ts := C.uint64_t(timestamp[0])
+	cPlaceHolderGroup := cPlaceholderGroups[0]
 
 	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
-	var status = C.Search(s.segmentPtr, plan.cPlan, cPlaceHolder, cTimestamp, cNumGroups, &searchResult.cQueryResult)
+	var status = C.Search(s.segmentPtr, plan.cSearchPlan, cPlaceHolderGroup, ts, &searchResult.cSearchResult)
 	errorCode := status.error_code
 
 	if errorCode != 0 {
@@ -249,8 +311,8 @@ func (s *Segment) segmentSearch(plan *Plan,
 	return &searchResult, nil
 }
 
-func (s *Segment) segmentGetEntityByIds(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
-	resProto := C.GetEntityByIds(s.segmentPtr, plan.RetrievePlanPtr, C.uint64_t(plan.Timestamp))
+func (s *Segment) getEntityByIds(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
+	resProto := C.GetEntityByIds(s.segmentPtr, plan.cRetrievePlan, C.uint64_t(plan.Timestamp))
 	result := new(segcorepb.RetrieveResults)
 	err := HandleCProtoResult(&resProto, result)
 	if err != nil {
@@ -259,14 +321,13 @@ func (s *Segment) segmentGetEntityByIds(plan *RetrievePlan) (*segcorepb.Retrieve
 	return result, nil
 }
 
-func (s *Segment) fillTargetEntry(plan *Plan,
-	result *SearchResult) error {
+func (s *Segment) fillTargetEntry(plan *SearchPlan, result *SearchResult) error {
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
 
 	log.Debug("segment fill target entry, ", zap.Int64("segment ID = ", s.segmentID))
-	var status = C.FillTargetEntry(s.segmentPtr, plan.cPlan, result.cQueryResult)
+	var status = C.FillTargetEntry(s.segmentPtr, plan.cSearchPlan, result.cSearchResult)
 	errorCode := status.error_code
 
 	if errorCode != 0 {

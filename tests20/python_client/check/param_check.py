@@ -91,6 +91,26 @@ def list_equal_check(param1, param2):
     return check_result
 
 
+def list_contain_check(sublist, superlist):
+    if not isinstance(sublist, list):
+        raise Exception("%s isn't list type" % sublist)
+    if not isinstance(superlist, list):
+        raise Exception("%s isn't list type" % superlist)
+
+    check_result = True
+    for i in sublist:
+        if i not in superlist:
+            check_result = False
+            break
+        else:
+            superlist.remove(i)
+    if not check_result:
+        log.error("list_contain_check: List(%s) does not contain list(%s)"
+                  % (str(superlist), str(sublist)))
+
+    return check_result
+
+
 def get_connect_object_name(_list):
     """ get the name of the objects that returned by the connection """
     if not isinstance(_list, list):
@@ -131,10 +151,11 @@ def equal_entity(exp, actual):
     for field, value in exp.items():
         if isinstance(value, list):
             assert len(actual[field]) == len(exp[field])
-            for i in range(len(exp[field])):
+            for i in range(0, len(exp[field]), 2):
                 assert abs(actual[field][i] - exp[field][i]) < ct.epsilon
         else:
             assert actual[field] == exp[field]
+    return True
 
 
 def entity_in(entity, entities, primary_field=ct.default_int64_field_name):
@@ -153,7 +174,7 @@ def entity_in(entity, entities, primary_field=ct.default_int64_field_name):
         primary_keys.append(e[primary_field])
     if primary_key not in primary_keys:
         return False
-    index = primary_key.index(primary_key)
+    index = primary_keys.index(primary_key)
     return equal_entity(entities[index], entity)
 
 
@@ -176,9 +197,10 @@ def remove_entity(entity, entities, primary_field=ct.default_int64_field_name):
     return entities
 
 
-def equal_entities_list(exp, actual):
+def equal_entities_list(exp, actual, with_vec=False):
     """
     compare two entities lists in inconsistent order
+    :param with_vec: whether entities with vec field
     :param exp: exp entities list, list of dict
     :param actual: actual entities list, list of dict
     :return: True or False
@@ -189,14 +211,21 @@ def equal_entities_list(exp, actual):
     """
     if len(exp) != len(actual):
         return False
-    for a in actual:
-        # if vec field returned in query res
-        # if entity_in_entities(a, exp):
-        if a in exp:
-            try:
-                exp.remove(a)
-                # if vec field returned in query res
-                # remove_entity(a, exp)
-            except Exception as ex:
-                print(ex)
+
+    if with_vec:
+        for a in actual:
+            # if vec field returned in query res
+            if entity_in(a, exp):
+                try:
+                    # if vec field returned in query res
+                    remove_entity(a, exp)
+                except Exception as ex:
+                    log.error(ex)
+    else:
+        for a in actual:
+            if a in exp:
+                try:
+                    exp.remove(a)
+                except Exception as ex:
+                    log.error(ex)
     return True if len(exp) == 0 else False

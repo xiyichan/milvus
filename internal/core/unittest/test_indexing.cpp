@@ -223,9 +223,9 @@ TEST(Indexing, IVFFlatNM) {
 
     EXPECT_EQ(indexing->Count(), N);
     EXPECT_EQ(indexing->Dim(), DIM);
-    auto query_dataset = knowhere::GenDataset(num_query, DIM, raw_data.data() + DIM * 4200);
+    auto dataset = knowhere::GenDataset(num_query, DIM, raw_data.data() + DIM * 4200);
 
-    auto result = indexing->Query(query_dataset, conf, nullptr);
+    auto result = indexing->Query(dataset, conf, nullptr);
     std::cout << "query ivf " << timer.get_step_seconds() << " seconds" << endl;
 
     auto ids = result->Get<int64_t*>(milvus::knowhere::meta::IDS);
@@ -239,7 +239,7 @@ TEST(Indexing, BinaryBruteForce) {
     int64_t N = 100000;
     int64_t num_queries = 10;
     int64_t topk = 5;
-    int64_t dim = 512;
+    int64_t dim = 8192;
     auto result_count = topk * num_queries;
     auto schema = std::make_shared<Schema>();
     schema->AddDebugField("vecbin", DataType::VECTOR_BINARY, dim, MetricType::METRIC_Jaccard);
@@ -247,7 +247,7 @@ TEST(Indexing, BinaryBruteForce) {
     auto dataset = DataGen(schema, N, 10);
     auto bin_vec = dataset.get_col<uint8_t>(0);
     auto query_data = 1024 * dim / 8 + bin_vec.data();
-    query::dataset::QueryDataset query_dataset{
+    query::dataset::SearchDataset search_dataset{
         faiss::MetricType::METRIC_Jaccard,  //
         num_queries,                        //
         topk,                               //
@@ -255,87 +255,88 @@ TEST(Indexing, BinaryBruteForce) {
         query_data                          //
     };
 
-    auto sub_result = query::BinarySearchBruteForce(query_dataset, bin_vec.data(), N, nullptr);
+    auto sub_result = query::BinarySearchBruteForce(search_dataset, bin_vec.data(), N, nullptr);
 
-    QueryResult qr;
-    qr.num_queries_ = num_queries;
-    qr.topK_ = topk;
-    qr.internal_seg_offsets_ = std::move(sub_result.mutable_labels());
-    qr.result_distances_ = std::move(sub_result.mutable_values());
+    SearchResult sr;
+    sr.num_queries_ = num_queries;
+    sr.topk_ = topk;
+    sr.internal_seg_offsets_ = std::move(sub_result.mutable_labels());
+    sr.result_distances_ = std::move(sub_result.mutable_values());
 
-    auto json = QueryResultToJson(qr);
+    auto json = SearchResultToJson(sr);
+    cout << json.dump(2);
     auto ref = json::parse(R"(
 [
   [
     [
       "1024->0.000000",
-      "43190->0.578804",
-      "5255->0.586207",
-      "23247->0.586486",
-      "4936->0.588889"
+      "48942->0.641860",
+      "18494->0.643842",
+      "68225->0.644310",
+      "93557->0.644320"
     ],
     [
       "1025->0.000000",
-      "15147->0.562162",
-      "49910->0.564304",
-      "67435->0.567867",
-      "38292->0.569921"
+      "73557->0.641265",
+      "53086->0.642550",
+      "9737->0.642834",
+      "62855->0.643802"
     ],
     [
       "1026->0.000000",
-      "15332->0.569061",
-      "56391->0.572559",
-      "17187->0.572603",
-      "26988->0.573770"
+      "62904->0.643793",
+      "46758->0.644466",
+      "57969->0.645362",
+      "98113->0.645536"
     ],
     [
       "1027->0.000000",
-      "4502->0.559586",
-      "25879->0.566234",
-      "66937->0.566489",
-      "21228->0.566845"
+      "92446->0.638235",
+      "96034->0.640414",
+      "92129->0.644207",
+      "45887->0.644415"
     ],
     [
       "1028->0.000000",
-      "38490->0.578804",
-      "12946->0.581717",
-      "31677->0.582173",
-      "94474->0.583569"
+      "22992->0.643497",
+      "73903->0.644090",
+      "19969->0.644948",
+      "65178->0.645119"
     ],
     [
       "1029->0.000000",
-      "59011->0.551630",
-      "82575->0.555263",
-      "42914->0.561828",
-      "23705->0.564171"
+      "19776->0.641118",
+      "15166->0.641916",
+      "85470->0.642357",
+      "16730->0.642997"
     ],
     [
       "1030->0.000000",
-      "39782->0.579946",
-      "65553->0.589947",
-      "82154->0.590028",
-      "13374->0.590164"
+      "55939->0.639781",
+      "84253->0.642518",
+      "31958->0.644277",
+      "11667->0.645638"
     ],
     [
       "1031->0.000000",
-      "47826->0.582873",
-      "72669->0.587432",
-      "334->0.588076",
-      "80652->0.589333"
+      "89536->0.637372",
+      "61622->0.637850",
+      "9275->0.639138",
+      "91403->0.640182"
     ],
     [
       "1032->0.000000",
-      "31968->0.573034",
-      "63545->0.575758",
-      "76913->0.575916",
-      "6286->0.576000"
+      "69504->0.642279",
+      "23414->0.643707",
+      "48770->0.645262",
+      "23231->0.645433"
     ],
     [
       "1033->0.000000",
-      "95635->0.570248",
-      "93439->0.574866",
-      "6709->0.578534",
-      "6367->0.579634"
+      "33540->0.635903",
+      "25310->0.639673",
+      "18576->0.640482",
+      "73729->0.641620"
     ]
   ]
 ]

@@ -69,12 +69,12 @@ TEST(Sealed, without_predicate) {
     auto ph_group_raw = CreatePlaceholderGroupFromBlob(num_queries, 16, query_ptr);
     auto ph_group = ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
 
-    QueryResult qr;
+    SearchResult sr;
     Timestamp time = 1000000;
     std::vector<const PlaceholderGroup*> ph_group_arr = {ph_group.get()};
 
-    qr = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-    auto pre_result = QueryResultToJson(qr);
+    sr = segment->Search(plan.get(), *ph_group, time);
+    auto pre_result = SearchResultToJson(sr);
     auto indexing = std::make_shared<knowhere::IVF>();
 
     auto conf = knowhere::Config{{knowhere::meta::DIM, dim},
@@ -100,21 +100,19 @@ TEST(Sealed, without_predicate) {
     std::vector<int64_t> vec_ids(ids, ids + topK * num_queries);
     std::vector<float> vec_dis(dis, dis + topK * num_queries);
 
-    qr.internal_seg_offsets_ = vec_ids;
-    qr.result_distances_ = vec_dis;
-    auto ref_result = QueryResultToJson(qr);
+    sr.internal_seg_offsets_ = vec_ids;
+    sr.result_distances_ = vec_dis;
+    auto ref_result = SearchResultToJson(sr);
 
     LoadIndexInfo load_info;
     load_info.field_id = fake_id.get();
     load_info.index = indexing;
     load_info.index_params["metric_type"] = "L2";
 
-    segment->LoadIndexing(load_info);
-    qr = QueryResult();
+    auto sealed_segment = SealedCreator(schema, dataset, load_info);
+    sr = sealed_segment->Search(plan.get(), *ph_group, time);
 
-    qr = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-
-    auto post_result = QueryResultToJson(qr);
+    auto post_result = SearchResultToJson(sr);
     std::cout << ref_result.dump(1);
     std::cout << post_result.dump(1);
     ASSERT_EQ(ref_result.dump(2), post_result.dump(2));
@@ -170,12 +168,12 @@ TEST(Sealed, with_predicate) {
     auto ph_group_raw = CreatePlaceholderGroupFromBlob(num_queries, 16, query_ptr);
     auto ph_group = ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
 
-    QueryResult qr;
+    SearchResult sr;
     Timestamp time = 10000000;
     std::vector<const PlaceholderGroup*> ph_group_arr = {ph_group.get()};
 
-    qr = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-    auto pre_qr = qr;
+    sr = segment->Search(plan.get(), *ph_group, time);
+    auto pre_sr = sr;
     auto indexing = std::make_shared<knowhere::IVF>();
 
     auto conf = knowhere::Config{{knowhere::meta::DIM, dim},
@@ -201,16 +199,14 @@ TEST(Sealed, with_predicate) {
     load_info.index = indexing;
     load_info.index_params["metric_type"] = "L2";
 
-    segment->LoadIndexing(load_info);
-    qr = QueryResult();
+    auto sealed_segment = SealedCreator(schema, dataset, load_info);
+    sr = sealed_segment->Search(plan.get(), *ph_group, time);
 
-    qr = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-
-    auto post_qr = qr;
+    auto post_sr = sr;
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * topK;
-        ASSERT_EQ(post_qr.internal_seg_offsets_[offset], 420000 + i);
-        ASSERT_EQ(post_qr.result_distances_[offset], 0.0);
+        ASSERT_EQ(post_sr.internal_seg_offsets_[offset], 420000 + i);
+        ASSERT_EQ(post_sr.result_distances_[offset], 0.0);
     }
 }
 
@@ -264,16 +260,15 @@ TEST(Sealed, LoadFieldData) {
     auto num_queries = 5;
     auto ph_group_raw = CreatePlaceholderGroup(num_queries, 16, 1024);
     auto ph_group = ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
-    std::vector<const PlaceholderGroup*> ph_group_arr = {ph_group.get()};
 
-    ASSERT_ANY_THROW(segment->Search(plan.get(), ph_group_arr.data(), &time, 1));
+    ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));
 
     SealedLoader(dataset, *segment);
     segment->DropFieldData(nothing_id);
-    segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
+    segment->Search(plan.get(), *ph_group, time);
 
     segment->DropFieldData(fakevec_id);
-    ASSERT_ANY_THROW(segment->Search(plan.get(), ph_group_arr.data(), &time, 1));
+    ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));
 
     LoadIndexInfo vec_info;
     vec_info.field_id = fakevec_id.get();
@@ -291,58 +286,57 @@ TEST(Sealed, LoadFieldData) {
         ASSERT_EQ(chunk_span2[i], ref2[i]);
     }
 
-    auto qr = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-    auto json = QueryResultToJson(qr);
+    auto sr = segment->Search(plan.get(), *ph_group, time);
+    auto json = SearchResultToJson(sr);
     std::cout << json.dump(1);
 
     segment->DropIndex(fakevec_id);
-    ASSERT_ANY_THROW(segment->Search(plan.get(), ph_group_arr.data(), &time, 1));
+    ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));
     segment->LoadIndex(vec_info);
-    auto qr2 = segment->Search(plan.get(), ph_group_arr.data(), &time, 1);
-    auto json2 = QueryResultToJson(qr);
+    auto sr2 = segment->Search(plan.get(), *ph_group, time);
+    auto json2 = SearchResultToJson(sr);
     ASSERT_EQ(json.dump(-2), json2.dump(-2));
     segment->DropFieldData(double_id);
-    ASSERT_ANY_THROW(segment->Search(plan.get(), ph_group_arr.data(), &time, 1));
+    ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));
     auto std_json = Json::parse(R"(
 [
  [
   [
-   "980486->3.149221",
-   "579754->3.634295",
-   "318367->3.661235",
-   "265835->4.333358",
-   "302798->4.553688"
+   "982->0.000000",
+   "25315->4.741588",
+   "551029->5.078479",
+   "455002->5.134716",
+   "504754->5.329021"
   ],
   [
-   "233390->7.931535",
-   "238958->8.109344",
-   "230645->8.439169",
-   "901939->8.658772",
-   "380328->8.731251"
+   "287136->8.409121",
+   "528353->8.740297",
+   "935763->9.422906",
+   "794649->9.436665",
+   "192031->9.832053"
   ],
   [
-   "897246->3.749835",
-   "750683->3.897577",
-   "857598->4.230977",
-   "299009->4.379639",
-   "440010->4.454046"
+   "59251->2.542610",
+   "433044->3.424016",
+   "797884->3.663446",
+   "430441->3.692723",
+   "697705->3.944479"
   ],
   [
-   "37641->3.783446",
-   "22628->4.719435",
-   "840855->4.782170",
-   "709627->5.063170",
-   "635836->5.156095"
+   "611544->3.463480",
+   "642941->3.753775",
+   "967504->3.885163",
+   "232724->4.574215",
+   "507245->5.040902"
   ],
   [
-   "810401->3.926393",
-   "46575->4.054171",
-   "201740->4.274491",
-   "669040->4.399628",
-   "231500->4.831223"
+   "351788->4.453843",
+   "410227->4.699380",
+   "501497->4.805948",
+   "715061->5.166959",
+   "414882->5.179897"
   ]
  ]
-]
-    )");
+])");
     ASSERT_EQ(std_json.dump(-2), json.dump(-2));
 }

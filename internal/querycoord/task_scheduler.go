@@ -296,6 +296,8 @@ func (scheduler *TaskScheduler) unmarshalTask(t string) (task, error) {
 			},
 			ReleaseCollectionRequest: &loadReq,
 			cluster:                  scheduler.cluster,
+			meta:                     scheduler.meta,
+			rootCoord:                scheduler.rootCoord,
 		}
 		newTask = releaseCollectionTask
 	case commonpb.MsgType_ReleasePartitions:
@@ -438,7 +440,7 @@ func (scheduler *TaskScheduler) processTask(t task) error {
 		})
 	defer span.Finish()
 	span.LogFields(oplog.Int64("processTask: scheduler process PreExecute", t.ID()))
-	t.PreExecute()
+	t.PreExecute(ctx)
 
 	key := fmt.Sprintf("%s/%d", taskInfoPrefix, t.ID())
 	err := scheduler.client.Save(key, strconv.Itoa(int(taskDoing)))
@@ -469,7 +471,7 @@ func (scheduler *TaskScheduler) processTask(t task) error {
 		childTask.SetID(id)
 		kvs := make(map[string]string)
 		taskKey := fmt.Sprintf("%s/%d", activeTaskPrefix, childTask.ID())
-		kvs[taskKey] = t.Marshal()
+		kvs[taskKey] = childTask.Marshal()
 		stateKey := fmt.Sprintf("%s/%d", taskInfoPrefix, childTask.ID())
 		kvs[stateKey] = strconv.Itoa(int(taskUndo))
 		err = scheduler.client.MultiSave(kvs)
@@ -489,7 +491,7 @@ func (scheduler *TaskScheduler) processTask(t task) error {
 	}
 
 	span.LogFields(oplog.Int64("processTask: scheduler process PostExecute", t.ID()))
-	t.PostExecute()
+	t.PostExecute(ctx)
 
 	return nil
 }
@@ -511,7 +513,7 @@ func (scheduler *TaskScheduler) scheduleLoop() {
 				if err != nil {
 					log.Error("scheduleLoop: process task error", zap.Any("error", err.Error()))
 					t.Notify(err)
-					t.PostExecute()
+					t.PostExecute(scheduler.ctx)
 				}
 				if t.Type() == commonpb.MsgType_LoadCollection || t.Type() == commonpb.MsgType_LoadPartitions {
 					t.Notify(err)
@@ -604,9 +606,20 @@ func (scheduler *TaskScheduler) waitActivateTaskDone(wg *sync.WaitGroup, t task)
 
 		redoFunc2 := func() {
 			if t.IsValid() {
+				log.Debug("waitActivateTaskDone: retry the active task", zap.Int64("taskID", t.ID()))
 				scheduler.activateTaskChan <- t
 				wg.Add(1)
 				go scheduler.waitActivateTaskDone(wg, t)
+			} else {
+				removes := make([]string, 0)
+				taskKey := fmt.Sprintf("%s/%d", activeTaskPrefix, t.ID())
+				removes = append(removes, taskKey)
+				stateKey := fmt.Sprintf("%s/%d", taskInfoPrefix, t.ID())
+				removes = append(removes, stateKey)
+				err = scheduler.client.MultiRemove(removes)
+				if err != nil {
+					log.Error("waitActivateTaskDone: error when remove task from etcd")
+				}
 			}
 		}
 

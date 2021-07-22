@@ -13,17 +13,13 @@ package miniokv
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"math/rand"
-	"time"
+	"sync"
 
 	"io"
 	"strings"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/util/performance"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -48,6 +44,7 @@ type Option struct {
 func NewMinIOKV(ctx context.Context, option *Option) (*MinIOKV, error) {
 	var minIOClient *minio.Client
 	var err error
+	log.Debug("MinioKV NewMinioKV", zap.Any("option", option))
 	minIOClient, err = minio.New(option.Address, &minio.Options{
 		Creds:  credentials.NewStaticV4(option.AccessKeyID, option.SecretAccessKeyID, ""),
 		Secure: option.UseSSL,
@@ -60,24 +57,22 @@ func NewMinIOKV(ctx context.Context, option *Option) (*MinIOKV, error) {
 	// check valid in first query
 	checkBucketFn := func() error {
 		bucketExists, err = minIOClient.BucketExists(ctx, option.BucketName)
-		return err
+		if err != nil {
+			return err
+		}
+		if !bucketExists {
+			log.Debug("MinioKV NewMinioKV", zap.Any("Check bucket", "bucket not exist"))
+			if option.CreateBucket {
+				log.Debug("MinioKV NewMinioKV create bucket.")
+				return minIOClient.MakeBucket(ctx, option.BucketName, minio.MakeBucketOptions{})
+			}
+			return fmt.Errorf("bucket %s not Existed", option.BucketName)
+		}
+		return nil
 	}
 	err = retry.Do(ctx, checkBucketFn, retry.Attempts(300))
 	if err != nil {
 		return nil, err
-	}
-	// connection shall be valid here, no need to retry
-	if option.CreateBucket {
-		if !bucketExists {
-			err = minIOClient.MakeBucket(ctx, option.BucketName, minio.MakeBucketOptions{})
-			if err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		if !bucketExists {
-			return nil, fmt.Errorf("bucket %s not Existed", option.BucketName)
-		}
 	}
 
 	kv := &MinIOKV{
@@ -85,9 +80,15 @@ func NewMinIOKV(ctx context.Context, option *Option) (*MinIOKV, error) {
 		minioClient: minIOClient,
 		bucketName:  option.BucketName,
 	}
+	log.Debug("MinioKV new MinioKV success.")
 	//go kv.performanceTest(false, 16<<20)
 
 	return kv, nil
+}
+
+func (kv *MinIOKV) Exist(key string) bool {
+	_, err := kv.minioClient.StatObject(kv.ctx, kv.bucketName, key, minio.StatObjectOptions{})
+	return err == nil
 }
 
 func (kv *MinIOKV) LoadWithPrefix(key string) ([]string, []string, error) {
@@ -119,6 +120,39 @@ func (kv *MinIOKV) Load(key string) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// FGetObject download file from minio to local storage system.
+func (kv *MinIOKV) FGetObject(key, localPath string) error {
+	err := kv.minioClient.FGetObject(kv.ctx, kv.bucketName, key, localPath+key, minio.GetObjectOptions{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// FGetObjects download file from minio to local storage system.
+// For parallell downloads file, n goroutines will be started to download n keys.
+func (kv *MinIOKV) FGetObjects(keys []string, localPath string) error {
+	var wg sync.WaitGroup
+	el := make(errorList, len(keys))
+	for i, key := range keys {
+		wg.Add(1)
+		go func(i int, key string) {
+			err := kv.minioClient.FGetObject(kv.ctx, kv.bucketName, key, localPath+key, minio.GetObjectOptions{})
+			if err != nil {
+				el[i] = err
+			}
+			wg.Done()
+		}(i, key)
+	}
+	wg.Wait()
+	for _, err := range el {
+		if err != nil {
+			return el
+		}
+	}
+	return nil
 }
 
 func (kv *MinIOKV) MultiLoad(keys []string) ([]string, error) {
@@ -202,46 +236,13 @@ func (kv *MinIOKV) Close() {
 
 }
 
-type Case struct {
-	Name      string
-	BlockSize int     // unit: byte
-	Speed     float64 // unit: MB/s
-}
+type errorList []error
 
-type Test struct {
-	Name  string
-	Cases []Case
-}
-
-func (kv *MinIOKV) performanceTest(toFile bool, totalBytes int) {
-	r := rand.Int()
-	results := Test{Name: "MinIO performance"}
-	for i := 0; i < 10; i += 2 {
-		data := performance.GenerateData(2*1024, float64(9-i))
-		startT := time.Now()
-		for j := 0; j < totalBytes/(len(data)); j++ {
-			kv.Save(fmt.Sprintf("performance-rand%d-test-%d-%d", r, i, j), data)
-		}
-		tc := time.Since(startT)
-		results.Cases = append(results.Cases, Case{Name: "write", BlockSize: len(data), Speed: 16.0 / tc.Seconds()})
-
-		startT = time.Now()
-		for j := 0; j < totalBytes/(len(data)); j++ {
-			kv.Load(fmt.Sprintf("performance-rand%d-test-%d-%d", r, i, j))
-		}
-		tc = time.Since(startT)
-		results.Cases = append(results.Cases, Case{Name: "read", BlockSize: len(data), Speed: 16.0 / tc.Seconds()})
+func (el errorList) Error() string {
+	var builder strings.Builder
+	builder.WriteString("All downloads results:\n")
+	for index, err := range el {
+		builder.WriteString(fmt.Sprintf("downloads #%d:%s\n", index+1, err.Error()))
 	}
-	kv.RemoveWithPrefix(fmt.Sprintf("performance-rand%d", r))
-	mb, err := json.Marshal(results)
-	if err != nil {
-		return
-	}
-	log.Debug(string(mb))
-	if toFile {
-		err = ioutil.WriteFile(fmt.Sprintf("./%d", r), mb, 0644)
-		if err != nil {
-			return
-		}
-	}
+	return builder.String()
 }

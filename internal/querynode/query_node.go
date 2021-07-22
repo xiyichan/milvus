@@ -27,21 +27,19 @@ import "C"
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"strconv"
 	"sync/atomic"
-	"time"
 
-	"github.com/milvus-io/milvus/internal/kv"
-	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
-	"github.com/milvus-io/milvus/internal/util/retry"
 	"go.etcd.io/etcd/clientv3"
 	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus/internal/kv"
+	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -50,8 +48,7 @@ type QueryNode struct {
 	queryNodeLoopCtx    context.Context
 	queryNodeLoopCancel context.CancelFunc
 
-	QueryNodeID UniqueID
-	stateCode   atomic.Value
+	stateCode atomic.Value
 
 	// internal components
 	historical *historical
@@ -61,10 +58,8 @@ type QueryNode struct {
 	queryService *queryService
 
 	// clients
-	queryCoord types.QueryCoord
 	rootCoord  types.RootCoord
 	indexCoord types.IndexCoord
-	dataCoord  types.DataCoord
 
 	msFactory msgstream.Factory
 	scheduler *taskScheduler
@@ -75,24 +70,7 @@ type QueryNode struct {
 	etcdKV  *etcdkv.EtcdKV
 }
 
-func NewQueryNode(ctx context.Context, queryNodeID UniqueID, factory msgstream.Factory) *QueryNode {
-	rand.Seed(time.Now().UnixNano())
-	ctx1, cancel := context.WithCancel(ctx)
-	node := &QueryNode{
-		queryNodeLoopCtx:    ctx1,
-		queryNodeLoopCancel: cancel,
-		QueryNodeID:         queryNodeID,
-		queryService:        nil,
-		msFactory:           factory,
-	}
-
-	node.scheduler = newTaskScheduler(ctx1)
-	node.UpdateStateCode(internalpb.StateCode_Abnormal)
-
-	return node
-}
-
-func NewQueryNodeWithoutID(ctx context.Context, factory msgstream.Factory) *QueryNode {
+func NewQueryNode(ctx context.Context, factory msgstream.Factory) *QueryNode {
 	ctx1, cancel := context.WithCancel(ctx)
 	node := &QueryNode{
 		queryNodeLoopCtx:    ctx1,
@@ -109,10 +87,12 @@ func NewQueryNodeWithoutID(ctx context.Context, factory msgstream.Factory) *Quer
 
 // Register register query node at etcd
 func (node *QueryNode) Register() error {
+	log.Debug("query node session info", zap.String("metaPath", Params.MetaRootPath), zap.Strings("etcdEndPoints", Params.EtcdEndpoints))
 	node.session = sessionutil.NewSession(node.queryNodeLoopCtx, Params.MetaRootPath, Params.EtcdEndpoints)
 	node.session.Init(typeutil.QueryNodeRole, Params.QueryNodeIP+":"+strconv.FormatInt(Params.QueryNodePort, 10), false)
 	Params.QueryNodeID = node.session.ServerID
 	log.Debug("query nodeID", zap.Int64("nodeID", Params.QueryNodeID))
+	log.Debug("query node address", zap.String("address", node.session.Address))
 
 	// This param needs valid QueryNodeID
 	Params.initMsgChannelSubName()
@@ -140,50 +120,12 @@ func (node *QueryNode) Init() error {
 
 	node.historical = newHistorical(node.queryNodeLoopCtx,
 		node.rootCoord,
-		node.dataCoord,
 		node.indexCoord,
 		node.msFactory,
 		node.etcdKV)
 	node.streaming = newStreaming(node.queryNodeLoopCtx, node.msFactory, node.etcdKV)
 
 	C.SegcoreInit()
-	//registerReq := &queryPb.RegisterNodeRequest{
-	//	Base: &commonpb.MsgBase{
-	//		SourceID: Params.QueryNodeID,
-	//	},
-	//	Address: &commonpb.Address{
-	//		Ip:   Params.QueryNodeIP,
-	//		Port: Params.QueryNodePort,
-	//	},
-	//}
-	//
-	//resp, err := node.queryCoord.RegisterNode(ctx, registerReq)
-	//if err != nil {
-	//	log.Debug("QueryNode RegisterNode failed", zap.Error(err))
-	//	panic(err)
-	//}
-	//if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-	//	log.Debug("QueryNode RegisterNode failed", zap.Any("Reason", resp.Status.Reason))
-	//	panic(resp.Status.Reason)
-	//}
-	//log.Debug("QueryNode RegisterNode success")
-	//
-	//for _, kv := range resp.InitParams.StartParams {
-	//	switch kv.Key {
-	//	case "StatsChannelName":
-	//		Params.StatsChannelName = kv.Value
-	//	case "TimeTickChannelName":
-	//		Params.QueryTimeTickChannelName = kv.Value
-	//	case "SearchChannelName":
-	//		Params.SearchChannelNames = append(Params.SearchChannelNames, kv.Value)
-	//	case "SearchResultChannelName":
-	//		Params.SearchResultChannelNames = append(Params.SearchResultChannelNames, kv.Value)
-	//	default:
-	//		return fmt.Errorf("Invalid key: %v", kv.Key)
-	//	}
-	//}
-	//
-	//log.Debug("QueryNode Init ", zap.Int64("QueryNodeID", Params.QueryNodeID), zap.Any("searchChannelNames", Params.SearchChannelNames))
 
 	if node.rootCoord == nil {
 		log.Error("null root coordinator detected")
@@ -191,10 +133,6 @@ func (node *QueryNode) Init() error {
 
 	if node.indexCoord == nil {
 		log.Error("null index coordinator detected")
-	}
-
-	if node.dataCoord == nil {
-		log.Error("null data coordinator detected")
 	}
 
 	return nil
@@ -259,26 +197,10 @@ func (node *QueryNode) SetRootCoord(rc types.RootCoord) error {
 	return nil
 }
 
-func (node *QueryNode) SetQueryCoord(query types.QueryCoord) error {
-	if query == nil {
-		return errors.New("null query coordinator interface")
-	}
-	node.queryCoord = query
-	return nil
-}
-
 func (node *QueryNode) SetIndexCoord(index types.IndexCoord) error {
 	if index == nil {
 		return errors.New("null index coordinator interface")
 	}
 	node.indexCoord = index
-	return nil
-}
-
-func (node *QueryNode) SetDataCoord(data types.DataCoord) error {
-	if data == nil {
-		return errors.New("null data coordinator interface")
-	}
-	node.dataCoord = data
 	return nil
 }

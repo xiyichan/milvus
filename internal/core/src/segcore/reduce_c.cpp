@@ -14,10 +14,11 @@
 #include "segcore/reduce_c.h"
 
 #include "segcore/Reduce.h"
+#include "segcore/ReduceStructure.h"
 #include "common/Types.h"
 #include "pb/milvus.pb.h"
 
-using SearchResult = milvus::QueryResult;
+using SearchResult = milvus::SearchResult;
 
 int
 MergeInto(int64_t num_queries, int64_t topk, float* distances, int64_t* uids, float* new_distances, int64_t* new_uids) {
@@ -49,32 +50,6 @@ DeleteMarshaledHits(CMarshaledHits c_marshaled_hits) {
     delete hits;
 }
 
-struct SearchResultPair {
-    float distance_;
-    SearchResult* search_result_;
-    int64_t offset_;
-    int64_t index_;
-
-    SearchResultPair(float distance, SearchResult* search_result, int64_t offset, int64_t index)
-        : distance_(distance), search_result_(search_result), offset_(offset), index_(index) {
-    }
-
-    bool
-    operator<(const SearchResultPair& pair) const {
-        return (distance_ < pair.distance_);
-    }
-
-    bool
-    operator>(const SearchResultPair& pair) const {
-        return (distance_ > pair.distance_);
-    }
-
-    void
-    reset_distance() {
-        distance_ = search_result_->result_distances_[offset_];
-    }
-};
-
 void
 GetResultData(std::vector<std::vector<int64_t>>& search_records,
               std::vector<SearchResult*>& search_results,
@@ -91,7 +66,7 @@ GetResultData(std::vector<std::vector<int64_t>>& search_records,
         result_pairs.push_back(SearchResultPair(distance, search_result, query_offset, j));
     }
     int64_t loc_offset = query_offset;
-    AssertInfo(topk > 0, "topK must greater than 0");
+    AssertInfo(topk > 0, "topk must greater than 0");
     for (int i = 0; i < topk; ++i) {
         result_pairs[0].reset_distance();
         std::sort(result_pairs.begin(), result_pairs.end(), std::greater<>());
@@ -133,13 +108,13 @@ ResetSearchResult(std::vector<std::vector<int64_t>>& search_records,
 }
 
 CStatus
-ReduceQueryResults(CQueryResult* c_search_results, int64_t num_segments, bool* is_selected) {
+ReduceSearchResults(CSearchResult* c_search_results, int64_t num_segments, bool* is_selected) {
     try {
         std::vector<SearchResult*> search_results;
         for (int i = 0; i < num_segments; ++i) {
             search_results.push_back((SearchResult*)c_search_results[i]);
         }
-        auto topk = search_results[0]->topK_;
+        auto topk = search_results[0]->topk_;
         auto num_queries = search_results[0]->num_queries_;
         std::vector<std::vector<int64_t>> search_records(num_segments);
 
@@ -162,13 +137,13 @@ ReduceQueryResults(CQueryResult* c_search_results, int64_t num_segments, bool* i
 }
 
 CStatus
-ReorganizeQueryResults(CMarshaledHits* c_marshaled_hits,
-                       CPlaceholderGroup* c_placeholder_groups,
-                       int64_t num_groups,
-                       CQueryResult* c_search_results,
-                       bool* is_selected,
-                       int64_t num_segments,
-                       CPlan c_plan) {
+ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits,
+                        CPlaceholderGroup* c_placeholder_groups,
+                        int64_t num_groups,
+                        CSearchResult* c_search_results,
+                        bool* is_selected,
+                        int64_t num_segments,
+                        CSearchPlan c_plan) {
     try {
         auto marshaledHits = std::make_unique<MarshaledHits>(num_groups);
         auto topk = GetTopK(c_plan);
@@ -252,11 +227,11 @@ ReorganizeQueryResults(CMarshaledHits* c_marshaled_hits,
 }
 
 CStatus
-ReorganizeSingleQueryResult(CMarshaledHits* c_marshaled_hits,
-                            CPlaceholderGroup* c_placeholder_groups,
-                            int64_t num_groups,
-                            CQueryResult c_search_result,
-                            CPlan c_plan) {
+ReorganizeSingleSearchResult(CMarshaledHits* c_marshaled_hits,
+                             CPlaceholderGroup* c_placeholder_groups,
+                             int64_t num_groups,
+                             CSearchResult c_search_result,
+                             CSearchPlan c_plan) {
     try {
         auto marshaledHits = std::make_unique<MarshaledHits>(num_groups);
         auto search_result = (SearchResult*)c_search_result;

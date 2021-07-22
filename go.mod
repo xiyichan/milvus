@@ -12,6 +12,7 @@ require (
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
 	github.com/go-basic/ipv4 v1.0.0
+	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/btree v1.0.0
@@ -34,6 +35,7 @@ require (
 	github.com/yahoo/athenz v1.9.16 // indirect
 	go.etcd.io/etcd v3.3.25+incompatible
 	go.uber.org/zap v1.15.0
+	golang.org/x/exp v0.0.0-20191030013958-a1ab85dbe136
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/net v0.0.0-20210614182718-04defd469f4e
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect

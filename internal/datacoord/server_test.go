@@ -109,15 +109,10 @@ func TestFlush(t *testing.T) {
 	svr := newTestServer(t, nil)
 	defer closeTestServer(t, svr)
 	schema := newTestSchema()
-	err := svr.meta.AddCollection(&datapb.CollectionInfo{
-		ID:         0,
-		Schema:     schema,
-		Partitions: []int64{},
-	})
-	assert.Nil(t, err)
+	svr.meta.AddCollection(&datapb.CollectionInfo{ID: 0, Schema: schema, Partitions: []int64{}})
 	segID, _, expireTs, err := svr.segmentManager.AllocSegment(context.TODO(), 0, 1, "channel-1", 1)
 	assert.Nil(t, err)
-	resp, err := svr.Flush(context.TODO(), &datapb.FlushRequest{
+	req := &datapb.FlushRequest{
 		Base: &commonpb.MsgBase{
 			MsgType:   commonpb.MsgType_Flush,
 			MsgID:     0,
@@ -126,7 +121,8 @@ func TestFlush(t *testing.T) {
 		},
 		DbID:         0,
 		CollectionID: 0,
-	})
+	}
+	resp, err := svr.Flush(context.TODO(), req)
 	assert.Nil(t, err)
 	assert.EqualValues(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	ids, err := svr.segmentManager.GetFlushableSegments(context.TODO(), "channel-1", expireTs)
@@ -187,7 +183,7 @@ func TestGetStatisticsChannel(t *testing.T) {
 func TestGetSegmentStates(t *testing.T) {
 	svr := newTestServer(t, nil)
 	defer closeTestServer(t, svr)
-	err := svr.meta.AddSegment(&datapb.SegmentInfo{
+	segment := &datapb.SegmentInfo{
 		ID:            1000,
 		CollectionID:  100,
 		PartitionID:   0,
@@ -200,7 +196,8 @@ func TestGetSegmentStates(t *testing.T) {
 			MsgGroup:    "",
 			Timestamp:   0,
 		},
-	})
+	}
+	err := svr.meta.AddSegment(NewSegmentInfo(segment))
 	assert.Nil(t, err)
 
 	cases := []struct {
@@ -266,7 +263,7 @@ func TestGetSegmentInfo(t *testing.T) {
 	segInfo := &datapb.SegmentInfo{
 		ID: 0,
 	}
-	svr.meta.AddSegment(segInfo)
+	svr.meta.AddSegment(NewSegmentInfo(segInfo))
 
 	req := &datapb.GetSegmentInfoRequest{
 		SegmentIDs: []int64{0},
@@ -287,7 +284,7 @@ func TestChannel(t *testing.T) {
 		segInfo := &datapb.SegmentInfo{
 			ID: segID,
 		}
-		svr.meta.AddSegment(segInfo)
+		svr.meta.AddSegment(NewSegmentInfo(segInfo))
 
 		stats := &internalpb.SegmentStatisticsUpdates{
 			SegmentID: segID,
@@ -329,14 +326,14 @@ func TestChannel(t *testing.T) {
 				BaseMsg: msgstream.BaseMsg{
 					HashValues: []uint32{0},
 				},
-				SegmentFlushCompletedMsg: internalpb.SegmentFlushCompletedMsg{
+				SegmentFlushCompletedMsg: datapb.SegmentFlushCompletedMsg{
 					Base: &commonpb.MsgBase{
 						MsgType:   msgType,
 						MsgID:     0,
 						Timestamp: t,
 						SourceID:  0,
 					},
-					SegmentID: 0,
+					Segment: &datapb.SegmentInfo{},
 				},
 			}
 		}
@@ -369,12 +366,11 @@ func TestSaveBinlogPaths(t *testing.T) {
 	}
 
 	for _, collection := range collections {
-		err := svr.meta.AddCollection(&datapb.CollectionInfo{
+		svr.meta.AddCollection(&datapb.CollectionInfo{
 			ID:         collection.ID,
 			Schema:     nil,
 			Partitions: collection.Partitions,
 		})
-		assert.Nil(t, err)
 	}
 
 	segments := []struct {
@@ -388,11 +384,12 @@ func TestSaveBinlogPaths(t *testing.T) {
 		{3, 1, 1},
 	}
 	for _, segment := range segments {
-		err := svr.meta.AddSegment(&datapb.SegmentInfo{
+		s := &datapb.SegmentInfo{
 			ID:           segment.id,
 			CollectionID: segment.collectionID,
 			PartitionID:  segment.partitionID,
-		})
+		}
+		err := svr.meta.AddSegment(NewSegmentInfo(s))
 		assert.Nil(t, err)
 	}
 	t.Run("Normal SaveRequest", func(t *testing.T) {
@@ -447,8 +444,8 @@ func TestSaveBinlogPaths(t *testing.T) {
 			assert.EqualValues(t, "/by-dev/test/0/1/2/1/Allo2", metas[1].BinlogPath)
 		}
 
-		segmentInfo, err := svr.meta.GetSegment(0)
-		assert.Nil(t, err)
+		segmentInfo := svr.meta.GetSegment(0)
+		assert.NotNil(t, segmentInfo)
 		assert.EqualValues(t, segmentInfo.DmlPosition.ChannelName, "ch1")
 		assert.EqualValues(t, segmentInfo.DmlPosition.MsgID, []byte{1, 2, 3})
 		assert.EqualValues(t, segmentInfo.NumOfRows, 10)
@@ -504,8 +501,7 @@ func TestDataNodeTtChannel(t *testing.T) {
 			},
 		}
 	}
-
-	svr.cluster.register(&datapb.DataNodeInfo{
+	info := &datapb.DataNodeInfo{
 		Address: "localhost:7777",
 		Version: 0,
 		Channels: []*datapb.ChannelStatus{
@@ -514,7 +510,11 @@ func TestDataNodeTtChannel(t *testing.T) {
 				State: datapb.ChannelWatchState_Complete,
 			},
 		},
-	})
+	}
+	node := NewNodeInfo(context.TODO(), info)
+	node.client, err = newMockDataNodeClient(1, ch)
+	assert.Nil(t, err)
+	svr.cluster.Register(node)
 
 	t.Run("Test segment flush after tt", func(t *testing.T) {
 		resp, err := svr.AssignSegmentID(context.TODO(), &datapb.AssignSegmentIDRequest{
@@ -565,20 +565,20 @@ func TestGetVChannelPos(t *testing.T) {
 	svr := newTestServer(t, nil)
 	defer closeTestServer(t, svr)
 	schema := newTestSchema()
-	err := svr.meta.AddCollection(&datapb.CollectionInfo{
+	svr.meta.AddCollection(&datapb.CollectionInfo{
 		ID:     0,
 		Schema: schema,
 	})
-	assert.Nil(t, err)
-	err = svr.meta.AddSegment(&datapb.SegmentInfo{
+	s1 := &datapb.SegmentInfo{
 		ID:            1,
 		CollectionID:  0,
 		PartitionID:   0,
 		InsertChannel: "ch1",
 		State:         commonpb.SegmentState_Flushed,
-	})
+	}
+	err := svr.meta.AddSegment(NewSegmentInfo(s1))
 	assert.Nil(t, err)
-	err = svr.meta.AddSegment(&datapb.SegmentInfo{
+	s2 := &datapb.SegmentInfo{
 		ID:            2,
 		CollectionID:  0,
 		PartitionID:   0,
@@ -590,15 +590,17 @@ func TestGetVChannelPos(t *testing.T) {
 			MsgGroup:    "",
 			Timestamp:   0,
 		},
-	})
+	}
+	err = svr.meta.AddSegment(NewSegmentInfo(s2))
 	assert.Nil(t, err)
-	err = svr.meta.AddSegment(&datapb.SegmentInfo{
+	s3 := &datapb.SegmentInfo{
 		ID:            3,
 		CollectionID:  0,
 		PartitionID:   0,
 		InsertChannel: "ch1",
 		State:         commonpb.SegmentState_Growing,
-	})
+	}
+	err = svr.meta.AddSegment(NewSegmentInfo(s3))
 	assert.Nil(t, err)
 
 	t.Run("get unexisted channel", func(t *testing.T) {
@@ -679,9 +681,9 @@ func TestGetRecoveryInfo(t *testing.T) {
 	t.Run("test get largest position of flushed segments as seek position", func(t *testing.T) {
 		seg1 := createSegment(0, 0, 0, 100, 10, "vchan1", commonpb.SegmentState_Flushed)
 		seg2 := createSegment(1, 0, 0, 100, 20, "vchan1", commonpb.SegmentState_Flushed)
-		err := svr.meta.AddSegment(seg1)
+		err := svr.meta.AddSegment(NewSegmentInfo(seg1))
 		assert.Nil(t, err)
-		err = svr.meta.AddSegment(seg2)
+		err = svr.meta.AddSegment(NewSegmentInfo(seg2))
 		assert.Nil(t, err)
 
 		req := &datapb.GetRecoveryInfoRequest{
@@ -700,9 +702,9 @@ func TestGetRecoveryInfo(t *testing.T) {
 	t.Run("test get recovery of unflushed segments ", func(t *testing.T) {
 		seg1 := createSegment(3, 0, 0, 100, 30, "vchan1", commonpb.SegmentState_Growing)
 		seg2 := createSegment(4, 0, 0, 100, 40, "vchan1", commonpb.SegmentState_Growing)
-		err := svr.meta.AddSegment(seg1)
+		err := svr.meta.AddSegment(NewSegmentInfo(seg1))
 		assert.Nil(t, err)
-		err = svr.meta.AddSegment(seg2)
+		err = svr.meta.AddSegment(NewSegmentInfo(seg2))
 		assert.Nil(t, err)
 
 		req := &datapb.GetRecoveryInfoRequest{

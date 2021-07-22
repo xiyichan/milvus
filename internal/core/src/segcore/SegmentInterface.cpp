@@ -15,7 +15,7 @@ namespace milvus::segcore {
 class Naive;
 
 void
-SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, QueryResult& results) const {
+SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult& results) const {
     std::shared_lock lck(mutex_);
     AssertInfo(plan, "empty plan");
     auto size = results.result_distances_.size();
@@ -71,15 +71,13 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, QueryResult& 
     }
 }
 
-QueryResult
+SearchResult
 SegmentInternalInterface::Search(const query::Plan* plan,
-                                 const query::PlaceholderGroup** placeholder_groups,
-                                 const Timestamp* timestamps,
-                                 int64_t num_groups) const {
+                                 const query::PlaceholderGroup& placeholder_group,
+                                 Timestamp timestamp) const {
     std::shared_lock lck(mutex_);
     check_search(plan);
-    Assert(num_groups == 1);
-    query::ExecPlanNodeVisitor visitor(*this, timestamps[0], *placeholder_groups[0]);
+    query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
     auto results = visitor.get_moved_result(*plan->plan_node_);
     return results;
 }
@@ -143,6 +141,7 @@ static std::unique_ptr<DataArray>
 CreateDataArrayFrom(const void* data_raw, int64_t count, const FieldMeta& field_meta) {
     auto data_type = field_meta.get_data_type();
     auto data_array = std::make_unique<DataArray>();
+    data_array->set_field_id(field_meta.get_id().get());
 
     if (!datatype_is_vector(data_type)) {
         auto scalar_array = CreateScalarArrayFrom(data_raw, count, data_type);
@@ -168,7 +167,7 @@ CreateDataArrayFrom(const void* data_raw, int64_t count, const FieldMeta& field_
                 break;
             }
             default: {
-                PanicInfo("unsupportted datatype");
+                PanicInfo("unsupported datatype");
             }
         }
     }
@@ -205,6 +204,10 @@ SegmentInternalInterface::GetEntityById(const std::vector<FieldOffset>& field_of
     // std::cout << dbg_log << std::endl;
 
     results->set_allocated_ids(ids_.release());
+
+    for (auto& seg_offset : seg_offsets) {
+        results->add_offset(seg_offset.get());
+    }
 
     auto fields_data = results->mutable_fields_data();
     for (auto field_offset : field_offsets) {

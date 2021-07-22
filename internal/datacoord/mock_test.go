@@ -16,7 +16,6 @@ import (
 	"time"
 
 	memkv "github.com/milvus-io/milvus/internal/kv/mem"
-	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -295,34 +294,9 @@ func (m *mockRootCoordService) UpdateChannelTimeTick(ctx context.Context, req *i
 func (m *mockRootCoordService) ReleaseDQLMessageStream(ctx context.Context, req *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error) {
 	panic("not implemented") // TODO: Implement
 }
-
-type mockStartupPolicy struct {
+func (m *mockRootCoordService) SegmentFlushCompleted(ctx context.Context, in *datapb.SegmentFlushCompletedMsg) (*commonpb.Status, error) {
+	return &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}, nil
 }
-
-func newMockStartupPolicy() clusterStartupPolicy {
-	return &mockStartupPolicy{}
-}
-
-func (p *mockStartupPolicy) apply(oldCluster map[string]*datapb.DataNodeInfo, delta *clusterDeltaChange, buffer []*datapb.ChannelStatus) ([]*datapb.DataNodeInfo, []*datapb.ChannelStatus) {
-	return nil, nil
-}
-
-type mockSessionManager struct {
-	ch chan interface{}
-}
-
-func newMockSessionManager(ch chan interface{}) sessionManager {
-	return &mockSessionManager{
-		ch: ch,
-	}
-}
-
-func (m *mockSessionManager) getOrCreateSession(addr string) (types.DataNode, error) {
-	return newMockDataNodeClient(0, m.ch)
-}
-
-func (m *mockSessionManager) releaseSession(addr string) {
-
-}
-func (m *mockSessionManager) release() {
+func (m *mockRootCoordService) AddNewSegment(ctx context.Context, in *datapb.SegmentMsg) (*commonpb.Status, error) {
+	panic("not implemented") // TODO: Implement
 }

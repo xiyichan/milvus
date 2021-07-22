@@ -205,46 +205,28 @@ type DdTaskQueue struct {
 
 type pChanStatInfo struct {
 	pChanStatistics
-	refCnt int
+	tsSet map[Timestamp]struct{}
 }
 
 type DmTaskQueue struct {
 	BaseTaskQueue
+	lock sync.Mutex
+
 	statsLock            sync.RWMutex
 	pChanStatisticsInfos map[pChan]*pChanStatInfo
 }
 
 func (queue *DmTaskQueue) Enqueue(t task) error {
-	err := t.OnEnqueue()
+	queue.lock.Lock()
+	defer queue.lock.Unlock()
+
+	err := queue.BaseTaskQueue.Enqueue(t)
 	if err != nil {
 		return err
 	}
 
-	ts, err := queue.sched.tsoAllocator.AllocOne()
-	if err != nil {
-		return err
-	}
-	t.SetTs(ts)
+	_ = queue.addPChanStats(t)
 
-	reqID, err := queue.sched.idAllocator.AllocOne()
-	if err != nil {
-		return err
-	}
-	t.SetID(reqID)
-
-	return queue.addUnissuedTask(t)
-}
-
-func (queue *DmTaskQueue) addUnissuedTask(t task) error {
-	queue.utLock.Lock()
-	defer queue.utLock.Unlock()
-
-	if queue.utFull() {
-		return errors.New("task queue is full")
-	}
-	queue.unissuedTasks.PushBack(t)
-	queue.addPChanStats(t)
-	queue.utBufChan <- 1
 	return nil
 }
 
@@ -276,17 +258,19 @@ func (queue *DmTaskQueue) addPChanStats(t task) error {
 			if !ok {
 				info = &pChanStatInfo{
 					pChanStatistics: stat,
-					refCnt:          1,
+					tsSet: map[Timestamp]struct{}{
+						stat.minTs: {},
+					},
 				}
 				queue.pChanStatisticsInfos[cName] = info
 			} else {
 				if info.minTs > stat.minTs {
-					info.minTs = stat.minTs
+					queue.pChanStatisticsInfos[cName].minTs = stat.minTs
 				}
 				if info.maxTs < stat.maxTs {
-					info.maxTs = stat.maxTs
+					queue.pChanStatisticsInfos[cName].maxTs = stat.maxTs
 				}
-				info.refCnt++
+				queue.pChanStatisticsInfos[cName].tsSet[info.minTs] = struct{}{}
 			}
 		}
 		queue.statsLock.Unlock()
@@ -306,9 +290,17 @@ func (queue *DmTaskQueue) popPChanStats(t task) error {
 		for _, cName := range channels {
 			info, ok := queue.pChanStatisticsInfos[cName]
 			if ok {
-				info.refCnt--
-				if info.refCnt <= 0 {
+				delete(queue.pChanStatisticsInfos[cName].tsSet, info.minTs)
+				if len(queue.pChanStatisticsInfos[cName].tsSet) <= 0 {
 					delete(queue.pChanStatisticsInfos, cName)
+				} else if queue.pChanStatisticsInfos[cName].minTs == info.minTs {
+					minTs := info.maxTs
+					for ts := range queue.pChanStatisticsInfos[cName].tsSet {
+						if ts < minTs {
+							minTs = ts
+						}
+					}
+					queue.pChanStatisticsInfos[cName].minTs = minTs
 				}
 			}
 		}
@@ -446,7 +438,16 @@ func (sched *TaskScheduler) processTask(t task, q TaskQueue) {
 			"ID":   t.ID(),
 		})
 	defer span.Finish()
+
+	span.LogFields(oplog.Int64("scheduler process AddActiveTask", t.ID()))
+	q.AddActiveTask(t)
+
+	defer func() {
+		span.LogFields(oplog.Int64("scheduler process PopActiveTask", t.ID()))
+		q.PopActiveTask(t.ID())
+	}()
 	span.LogFields(oplog.Int64("scheduler process PreExecute", t.ID()))
+
 	err := t.PreExecute(ctx)
 
 	defer func() {
@@ -457,19 +458,13 @@ func (sched *TaskScheduler) processTask(t task, q TaskQueue) {
 		return
 	}
 
-	span.LogFields(oplog.Int64("scheduler process AddActiveTask", t.ID()))
-	q.AddActiveTask(t)
-
-	defer func() {
-		span.LogFields(oplog.Int64("scheduler process PopActiveTask", t.ID()))
-		q.PopActiveTask(t.ID())
-	}()
 	span.LogFields(oplog.Int64("scheduler process Execute", t.ID()))
 	err = t.Execute(ctx)
 	if err != nil {
 		trace.LogError(span, err)
 		return
 	}
+
 	span.LogFields(oplog.Int64("scheduler process PostExecute", t.ID()))
 	err = t.PostExecute(ctx)
 }

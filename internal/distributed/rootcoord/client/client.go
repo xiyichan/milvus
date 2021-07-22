@@ -13,6 +13,7 @@ package grpcrootcoordclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
@@ -31,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 // GrpcClient grpc client
@@ -100,12 +103,17 @@ func (c *GrpcClient) connect(retryOptions ...retry.Option) error {
 			grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
 			grpc.WithUnaryInterceptor(
 				grpc_middleware.ChainUnaryClient(
-					grpc_retry.UnaryClientInterceptor(),
+					grpc_retry.UnaryClientInterceptor(
+						grpc_retry.WithMax(3),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.UnaryClientInterceptor(opts...),
 				)),
 			grpc.WithStreamInterceptor(
 				grpc_middleware.ChainStreamClient(
-					grpc_retry.StreamClientInterceptor(),
+					grpc_retry.StreamClientInterceptor(grpc_retry.WithMax(3),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.StreamClientInterceptor(opts...),
 				)),
 		)
@@ -145,9 +153,10 @@ func (c *GrpcClient) recall(caller func() (interface{}, error)) (interface{}, er
 	if err == nil {
 		return ret, nil
 	}
+	log.Debug("RootCoord Client grpc error", zap.Error(err))
 	err = c.connect()
 	if err != nil {
-		return ret, err
+		return ret, errors.New("Connect to rootcoord failed with error:\n" + err.Error())
 	}
 	ret, err = caller()
 	if err == nil {
@@ -302,6 +311,12 @@ func (c *GrpcClient) ShowSegments(ctx context.Context, in *milvuspb.ShowSegments
 func (c *GrpcClient) ReleaseDQLMessageStream(ctx context.Context, in *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error) {
 	ret, err := c.recall(func() (interface{}, error) {
 		return c.grpcClient.ReleaseDQLMessageStream(ctx, in)
+	})
+	return ret.(*commonpb.Status), err
+}
+func (c *GrpcClient) SegmentFlushCompleted(ctx context.Context, in *datapb.SegmentFlushCompletedMsg) (*commonpb.Status, error) {
+	ret, err := c.recall(func() (interface{}, error) {
+		return c.grpcClient.SegmentFlushCompleted(ctx, in)
 	})
 	return ret.(*commonpb.Status), err
 }

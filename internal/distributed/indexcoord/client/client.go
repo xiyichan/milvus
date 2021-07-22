@@ -13,6 +13,7 @@ package grpcindexcoordclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -94,12 +95,12 @@ func (c *Client) connect(retryOptions ...retry.Option) error {
 			grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
 			grpc.WithUnaryInterceptor(
 				grpc_middleware.ChainUnaryClient(
-					grpc_retry.UnaryClientInterceptor(),
+					grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3), grpc_retry.WithPerRetryTimeout(time.Second*3)),
 					grpc_opentracing.UnaryClientInterceptor(opts...),
 				)),
 			grpc.WithStreamInterceptor(
 				grpc_middleware.ChainStreamClient(
-					grpc_retry.StreamClientInterceptor(),
+					grpc_retry.StreamClientInterceptor(grpc_retry.WithMax(3), grpc_retry.WithPerRetryTimeout(time.Second*3)),
 					grpc_opentracing.StreamClientInterceptor(opts...),
 				)),
 		)
@@ -125,9 +126,10 @@ func (c *Client) recall(caller func() (interface{}, error)) (interface{}, error)
 	if err == nil {
 		return ret, nil
 	}
+	log.Debug("IndexCoord Client grpc error", zap.Error(err))
 	err = c.connect()
 	if err != nil {
-		return ret, err
+		return ret, errors.New("Connect to indexcoord failed with error:\n" + err.Error())
 	}
 	ret, err = caller()
 	if err == nil {
@@ -169,13 +171,6 @@ func (c *Client) GetStatisticsChannel(ctx context.Context) (*milvuspb.StringResp
 		return c.grpcClient.GetStatisticsChannel(ctx, &internalpb.GetStatisticsChannelRequest{})
 	})
 	return ret.(*milvuspb.StringResponse), err
-}
-
-func (c *Client) RegisterNode(ctx context.Context, req *indexpb.RegisterNodeRequest) (*indexpb.RegisterNodeResponse, error) {
-	ret, err := c.recall(func() (interface{}, error) {
-		return c.grpcClient.RegisterNode(ctx, req)
-	})
-	return ret.(*indexpb.RegisterNodeResponse), err
 }
 
 func (c *Client) BuildIndex(ctx context.Context, req *indexpb.BuildIndexRequest) (*indexpb.BuildIndexResponse, error) {

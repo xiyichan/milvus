@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN echo 'root:root' | chpasswd
 
+# refer: https://code.visualstudio.com/docs/remote/containers-advanced#_avoiding-extension-reinstalls-on-container-rebuild
 RUN mkdir -p /home/milvus/.vscode-server/extensions \
         /home/milvus/.vscode-server-insiders/extensions \
     && chmod -R 777 /home/milvus

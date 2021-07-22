@@ -15,6 +15,7 @@
 #include <utility>
 #include "query/generated/ShowExprVisitor.h"
 #include "query/ExprImpl.h"
+#include "pb/plan.pb.h"
 
 namespace milvus::query {
 using Json = nlohmann::json;
@@ -39,14 +40,14 @@ class ShowExprNodeVisitor : ExprVisitor {
     }
 
     Json
-    combine(Json&& extra, UnaryExpr& expr) {
+    combine(Json&& extra, UnaryExprBase& expr) {
         auto result = std::move(extra);
         result["child"] = call_child(*expr.child_);
         return result;
     }
 
     Json
-    combine(Json&& extra, BinaryExpr& expr) {
+    combine(Json&& extra, BinaryExprBase& expr) {
         auto result = std::move(extra);
         result["left_child"] = call_child(*expr.left_);
         result["right_child"] = call_child(*expr.right_);
@@ -60,9 +61,9 @@ class ShowExprNodeVisitor : ExprVisitor {
 #endif
 
 void
-ShowExprVisitor::visit(BoolUnaryExpr& expr) {
+ShowExprVisitor::visit(LogicalUnaryExpr& expr) {
     Assert(!ret_.has_value());
-    using OpType = BoolUnaryExpr::OpType;
+    using OpType = LogicalUnaryExpr::OpType;
 
     // TODO: use magic_enum if available
     Assert(expr.op_type_ == OpType::LogicalNot);
@@ -76,9 +77,9 @@ ShowExprVisitor::visit(BoolUnaryExpr& expr) {
 }
 
 void
-ShowExprVisitor::visit(BoolBinaryExpr& expr) {
+ShowExprVisitor::visit(LogicalBinaryExpr& expr) {
     Assert(!ret_.has_value());
-    using OpType = BoolBinaryExpr::OpType;
+    using OpType = LogicalBinaryExpr::OpType;
 
     // TODO: use magic_enum if available
     auto op_name = [](OpType op) {
@@ -145,12 +146,13 @@ ShowExprVisitor::visit(TermExpr& expr) {
 template <typename T>
 static Json
 ConditionExtract(const RangeExpr& expr_raw) {
+    using proto::plan::OpType;
+    using proto::plan::OpType_Name;
     auto expr = dynamic_cast<const RangeExprImpl<T>*>(&expr_raw);
     Assert(expr);
     std::map<std::string, T> mapping;
     for (auto [op, v] : expr->conditions_) {
-        // TODO: use name
-        auto op_name = "op(" + std::to_string((int)op) + ")";
+        auto op_name = OpType_Name(static_cast<OpType>(op));
         mapping[op_name] = v;
     }
     return mapping;
@@ -185,6 +187,28 @@ ShowExprVisitor::visit(RangeExpr& expr) {
              {"field_offset", expr.field_offset_.get()},
              {"data_type", datatype_name(expr.data_type_)},
              {"conditions", std::move(conditions)}};
+    ret_ = res;
+}
+
+void
+ShowExprVisitor::visit(CompareExpr& expr) {
+    using proto::plan::OpType;
+    using proto::plan::OpType_Name;
+    Assert(!ret_.has_value());
+
+    Json offsets;
+    for (auto& offset : expr.field_offsets_) {
+        offsets.emplace_back(offset.get());
+    }
+    Json types;
+    for (auto& datatype : expr.data_types_) {
+        types.emplace_back(datatype_name(datatype));
+    }
+
+    Json res{{"expr_type", "Compare"},
+             {"fields_offset", offsets},
+             {"datas_type", types},
+             {"op", OpType_Name(static_cast<OpType>(expr.op))}};
     ret_ = res;
 }
 }  // namespace milvus::query

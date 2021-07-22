@@ -154,7 +154,7 @@ class TestQueryBase:
         res = connect.query(collection, term_expr)
         logging.getLogger().info(res)
         assert len(res) == default_pos
-        for _id, index in enumerate(ids):
+        for _id, index in enumerate(ids[:default_pos]):
             if res[index][default_int_field_name] == entities[0]["values"][index]:
                 assert res[index][default_float_field_name] == entities[1]["values"][index]
         #     # ut.assert_equal_vector(res[i][ut.default_float_vec_field_name], entities[-1]["values"][i])
@@ -458,7 +458,7 @@ class TestQueryBase:
         with pytest.raises(Exception):
             connect.query(collection, default_term_expr, output_fields=["int"])
 
-    @pytest.mark.xfail(reason="#6074")
+    # @pytest.mark.xfail(reason="#6074")
     def test_query_output_part_not_existed_field(self, connect, collection):
         """
         target: test query output part not existed field

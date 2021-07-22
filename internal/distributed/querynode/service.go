@@ -31,7 +31,6 @@ import (
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	dsc "github.com/milvus-io/milvus/internal/distributed/datacoord/client"
 	isc "github.com/milvus-io/milvus/internal/distributed/indexcoord/client"
-	qcc "github.com/milvus-io/milvus/internal/distributed/querycoord/client"
 	rcc "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
@@ -59,7 +58,6 @@ type Server struct {
 	dataCoord  *dsc.Client
 	rootCoord  *rcc.GrpcClient
 	indexCoord *isc.Client
-	queryCoord *qcc.Client
 
 	closer io.Closer
 }
@@ -70,7 +68,7 @@ func NewServer(ctx context.Context, factory msgstream.Factory) (*Server, error) 
 	s := &Server{
 		ctx:         ctx1,
 		cancel:      cancel,
-		querynode:   qn.NewQueryNodeWithoutID(ctx, factory),
+		querynode:   qn.NewQueryNode(ctx, factory),
 		grpcErrChan: make(chan error),
 	}
 	return s, nil
@@ -96,39 +94,6 @@ func (s *Server) init() error {
 	err := <-s.grpcErrChan
 	if err != nil {
 		return err
-	}
-
-	if err := s.querynode.Register(); err != nil {
-		return err
-	}
-	// --- QueryCoord ---
-	log.Debug("QueryNode start to new QueryCoordClient", zap.Any("QueryCoordAddress", Params.QueryCoordAddress))
-	queryCoord, err := qcc.NewClient(s.ctx, qn.Params.MetaRootPath, qn.Params.EtcdEndpoints)
-	if err != nil {
-		log.Debug("QueryNode new QueryCoordClient failed", zap.Error(err))
-		panic(err)
-	}
-
-	if err = queryCoord.Init(); err != nil {
-		log.Debug("QueryNode QueryCoordClient Init failed", zap.Error(err))
-		panic(err)
-	}
-
-	if err = queryCoord.Start(); err != nil {
-		log.Debug("QueryNode QueryCoordClient Start failed", zap.Error(err))
-		panic(err)
-	}
-
-	log.Debug("QueryNode start to wait for QueryCoord ready")
-	err = funcutil.WaitForComponentInitOrHealthy(s.ctx, queryCoord, "QueryCoord", 1000000, time.Millisecond*200)
-	if err != nil {
-		log.Debug("QueryNode wait for QueryCoord ready failed", zap.Error(err))
-		panic(err)
-	}
-	log.Debug("QueryNode report QueryCoord is ready")
-
-	if err := s.SetQueryCoord(queryCoord); err != nil {
-		panic(err)
 	}
 
 	// --- RootCoord Client ---
@@ -194,37 +159,14 @@ func (s *Server) init() error {
 		panic(err)
 	}
 
-	// --- DataCoord ---
-	log.Debug("QueryNode start to new DataCoordClient", zap.Any("DataCoordAddress", Params.DataCoordAddress))
-	dataCoord, err := dsc.NewClient(s.ctx, qn.Params.MetaRootPath, qn.Params.EtcdEndpoints)
-	if err != nil {
-		log.Debug("QueryNode new DataCoordClient failed", zap.Error(err))
-		panic(err)
-	}
-	if err = dataCoord.Init(); err != nil {
-		log.Debug("QueryNode DataCoordClient Init failed", zap.Error(err))
-		panic(err)
-	}
-	if err = dataCoord.Start(); err != nil {
-		log.Debug("QueryNode DataCoordClient Start failed", zap.Error(err))
-		panic(err)
-	}
-	log.Debug("QueryNode start to wait for DataCoord ready")
-	err = funcutil.WaitForComponentInitOrHealthy(s.ctx, dataCoord, "DataCoord", 1000000, time.Millisecond*200)
-	if err != nil {
-		log.Debug("QueryNode wait for DataCoord ready failed", zap.Error(err))
-		panic(err)
-	}
-	log.Debug("QueryNode report DataCoord is ready")
-
-	if err := s.SetDataCoord(dataCoord); err != nil {
-		panic(err)
-	}
-
 	s.querynode.UpdateStateCode(internalpb.StateCode_Initializing)
 	log.Debug("QueryNode", zap.Any("State", internalpb.StateCode_Initializing))
 	if err := s.querynode.Init(); err != nil {
 		log.Error("QueryNode init error: ", zap.Error(err))
+		return err
+	}
+
+	if err := s.querynode.Register(); err != nil {
 		return err
 	}
 	return nil
@@ -315,16 +257,8 @@ func (s *Server) SetRootCoord(rootCoord types.RootCoord) error {
 	return s.querynode.SetRootCoord(rootCoord)
 }
 
-func (s *Server) SetQueryCoord(queryCoord types.QueryCoord) error {
-	return s.querynode.SetQueryCoord(queryCoord)
-}
-
 func (s *Server) SetIndexCoord(indexCoord types.IndexCoord) error {
 	return s.querynode.SetIndexCoord(indexCoord)
-}
-
-func (s *Server) SetDataCoord(dataCoord types.DataCoord) error {
-	return s.querynode.SetDataCoord(dataCoord)
 }
 
 func (s *Server) GetTimeTickChannel(ctx context.Context, req *internalpb.GetTimeTickChannelRequest) (*milvuspb.StringResponse, error) {

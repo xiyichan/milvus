@@ -9,12 +9,9 @@ from base.partition_wrapper import ApiPartitionWrapper
 from base.index_wrapper import ApiIndexWrapper
 from base.utility_wrapper import ApiUtilityWrapper
 from base.schema_wrapper import ApiCollectionSchemaWrapper, ApiFieldSchemaWrapper
-
-from config.log_config import log_config
 from utils.util_log import test_log as log
 from common import common_func as cf
 from common import common_type as ct
-from check.param_check import ip_check, number_check
 
 
 class ParamInfo:
@@ -47,21 +44,22 @@ class Base:
         log.info("[setup_class] Start setup class...")
 
     def teardown_class(self):
-        pass
+        log.info("[teardown_class] Start teardown class...")
 
-    def setup(self):
+    def setup_method(self, method):
         log.info(("*" * 35) + " setup " + ("*" * 35))
+        log.info("[setup_method] Start setup test case %s." % method.__name__)
         self.connection_wrap = ApiConnectionsWrapper()
+        self.utility_wrap = ApiUtilityWrapper()
         self.collection_wrap = ApiCollectionWrapper()
-        self.collection_object_list.append(self.collection_wrap)
         self.partition_wrap = ApiPartitionWrapper()
         self.index_wrap = ApiIndexWrapper()
-        self.utility_wrap = ApiUtilityWrapper()
         self.collection_schema_wrap = ApiCollectionSchemaWrapper()
         self.field_schema_wrap = ApiFieldSchemaWrapper()
 
-    def teardown(self):
+    def teardown_method(self, method):
         log.info(("*" * 35) + " teardown " + ("*" * 35))
+        log.info("[teardown_method] Start teardown test case %s..." % method.__name__)
 
         try:
             """ Drop collection before disconnect """
@@ -69,18 +67,16 @@ class Base:
                 self.connection_wrap.connect(alias=DefaultConfig.DEFAULT_USING, host=param_info.param_host,
                                              port=param_info.param_port)
 
-            for collection_object in self.collection_object_list:
-                if collection_object is not None and collection_object.collection is not None:
-                    collection_object.drop()
+            if self.collection_wrap.collection is not None:
+                self.collection_wrap.drop(check_task=ct.CheckTasks.check_nothing)
 
-            # if self.collection_wrap is not None:
-            #     collection_list = self.utility_wrap.list_collections()[0]
-            #     for i in collection_list:
-            #         collection_wrap = ApiCollectionWrapper()
-            #         collection_wrap.init_collection(name=i)
-            #         collection_wrap.drop()
+            collection_list = self.utility_wrap.list_collections()[0]
+            for collection_object in self.collection_object_list:
+                if collection_object.collection is not None and collection_object.name in collection_list:
+                    collection_object.drop(check_task=ct.CheckTasks.check_nothing)
+
         except Exception as e:
-            pass
+            log.debug(str(e))
 
         try:
             """ Delete connection and reset configuration"""
@@ -92,25 +88,7 @@ class Base:
             self.connection_wrap.add_connection(default={"host": DefaultConfig.DEFAULT_HOST,
                                                          "port": DefaultConfig.DEFAULT_PORT})
         except Exception as e:
-            pass
-
-    @pytest.fixture(scope="module", autouse=True)
-    def initialize_env(self, request):
-        """ clean log before testing """
-        host = request.config.getoption("--host")
-        port = request.config.getoption("--port")
-        handler = request.config.getoption("--handler")
-        clean_log = request.config.getoption("--clean_log")
-
-        """ params check """
-        assert ip_check(host) and number_check(port)
-
-        """ modify log files """
-        cf.modify_file(file_path_list=[log_config.log_debug, log_config.log_info, log_config.log_err], is_modify=clean_log)
-
-        log.info("#" * 80)
-        log.info("[initialize_milvus] Log cleaned up, start testing...")
-        param_info.prepare_param_info(host, port, handler)
+            log.debug(str(e))
 
 
 class TestcaseBase(Base):
@@ -118,15 +96,6 @@ class TestcaseBase(Base):
     Additional methods;
     Public methods that can be used to add cases.
     """
-
-    # move to conftest.py
-    # @pytest.fixture(scope="module", params=ct.get_invalid_strs)
-    # def get_invalid_string(self, request):
-    #     yield request.param
-    #
-    # @pytest.fixture(scope="module", params=cf.gen_simple_index())
-    # def get_index_param(self, request):
-    #     yield request.param
 
     def _connect(self):
         """ Add an connection and create the connect """
@@ -140,8 +109,8 @@ class TestcaseBase(Base):
         if self.connection_wrap.get_connection(alias=DefaultConfig.DEFAULT_USING)[0] is None:
             self._connect()
         collection_w = ApiCollectionWrapper()
-        self.collection_object_list.append(collection_w)
         collection_w.init_collection(name=name, schema=schema, check_task=check_task, check_items=check_items, **kwargs)
+        self.collection_object_list.append(collection_w)
         return collection_w
 
     def init_partition_wrap(self, collection_wrap=None, name=None, description=None,
@@ -155,8 +124,8 @@ class TestcaseBase(Base):
                                       **kwargs)
         return partition_wrap
 
-    def init_collection_general(self, prefix, insert_data=False, nb=ct.default_nb,
-                                partition_num=0, is_binary=False, is_all_data_type=False):
+    def init_collection_general(self, prefix, insert_data=False, nb=ct.default_nb, partition_num=0,
+                                is_binary=False, is_all_data_type=False, auto_id=False, dim=ct.default_dim):
         """
         target: create specified collections
         method: 1. create collections (binary/non-binary)
@@ -166,16 +135,17 @@ class TestcaseBase(Base):
         expected: return collection and raw data
         """
         log.info("Test case of search interface: initialize before test case")
-        conn = self._connect()
+        self._connect()
         collection_name = cf.gen_unique_str(prefix)
         vectors = []
         binary_raw_vectors = []
+        insert_ids = []
         # 1 create collection
-        default_schema = cf.gen_default_collection_schema()
+        default_schema = cf.gen_default_collection_schema(auto_id=auto_id, dim=dim)
         if is_binary:
-            default_schema = cf.gen_default_binary_collection_schema()
+            default_schema = cf.gen_default_binary_collection_schema(auto_id=auto_id, dim=dim)
         if is_all_data_type:
-            default_schema = cf.gen_collection_schema_all_datatype()
+            default_schema = cf.gen_collection_schema_all_datatype(auto_id=auto_id, dim=dim)
         log.info("init_collection_general: collection creation")
         collection_w = self.init_collection_wrap(name=collection_name,
                                                  schema=default_schema)
@@ -184,10 +154,30 @@ class TestcaseBase(Base):
             cf.gen_partitions(collection_w, partition_num)
         # 3 insert data if specified
         if insert_data:
-            collection_w, vectors, binary_raw_vectors = \
-                cf.insert_data(collection_w, nb, is_binary, is_all_data_type)
+            collection_w, vectors, binary_raw_vectors, insert_ids = \
+                cf.insert_data(collection_w, nb, is_binary, is_all_data_type,
+                               auto_id=auto_id, dim=dim)
             assert collection_w.is_empty is False
             assert collection_w.num_entities == nb
             collection_w.load()
 
-        return collection_w, vectors, binary_raw_vectors
+        return collection_w, vectors, binary_raw_vectors, insert_ids
+
+    def insert_entities_into_two_partitions_in_half(self, half, prefix='query'):
+        """
+        insert default entities into two partitions(partition_w and _default) in half(int64 and float fields values)
+        :param half: half of nb
+        :return: collection wrap and partition wrap
+        """
+        conn = self._connect()
+        collection_w = self.init_collection_wrap(name=cf.gen_unique_str(prefix))
+        partition_w = self.init_partition_wrap(collection_wrap=collection_w)
+        # insert [0, half) into partition_w
+        df_partition = cf.gen_default_dataframe_data(nb=half, start=0)
+        partition_w.insert(df_partition)
+        # insert [half, nb) into _default
+        df_default = cf.gen_default_dataframe_data(nb=half, start=half)
+        collection_w.insert(df_default)
+        conn.flush([collection_w.name])
+        collection_w.load()
+        return collection_w, partition_w, df_partition, df_default

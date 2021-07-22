@@ -13,6 +13,7 @@ package grpcdatanodeclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/util/trace"
+	"google.golang.org/grpc/codes"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -68,14 +70,23 @@ func (c *Client) connect(retryOptions ...retry.Option) error {
 		log.Debug("DataNode connect ", zap.String("address", c.addr))
 		conn, err := grpc.DialContext(c.ctx, c.addr,
 			grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
+			grpc.WithDisableRetry(),
 			grpc.WithUnaryInterceptor(
 				grpc_middleware.ChainUnaryClient(
-					grpc_retry.UnaryClientInterceptor(),
+					grpc_retry.UnaryClientInterceptor(
+						grpc_retry.WithMax(3),
+						grpc_retry.WithPerRetryTimeout(time.Second*5),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.UnaryClientInterceptor(opts...),
 				)),
 			grpc.WithStreamInterceptor(
 				grpc_middleware.ChainStreamClient(
-					grpc_retry.StreamClientInterceptor(),
+					grpc_retry.StreamClientInterceptor(
+						grpc_retry.WithMax(3),
+						grpc_retry.WithPerRetryTimeout(time.Second*5),
+						grpc_retry.WithCodes(codes.Aborted, codes.Unavailable),
+					),
 					grpc_opentracing.StreamClientInterceptor(opts...),
 				)),
 		)
@@ -101,9 +112,10 @@ func (c *Client) recall(caller func() (interface{}, error)) (interface{}, error)
 	if err == nil {
 		return ret, nil
 	}
+	log.Debug("DataNode Client grpc error", zap.Error(err))
 	err = c.connect()
 	if err != nil {
-		return ret, err
+		return ret, errors.New("Connect to datanode failed with error:\n" + err.Error())
 	}
 	ret, err = caller()
 	if err == nil {

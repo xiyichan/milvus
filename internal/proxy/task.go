@@ -23,14 +23,9 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
-
-	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
-
-	"github.com/milvus-io/milvus/internal/proto/planpb"
-
-	"github.com/milvus-io/milvus/internal/util/funcutil"
 
 	"go.uber.org/zap"
 
@@ -43,9 +38,12 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
+	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -194,6 +192,133 @@ func (it *InsertTask) getChannels() ([]pChan, error) {
 
 func (it *InsertTask) OnEnqueue() error {
 	it.BaseInsertTask.InsertRequest.Base = &commonpb.MsgBase{}
+	return nil
+}
+
+func getNumRowsOfScalarField(datas interface{}) uint32 {
+	realTypeDatas := reflect.ValueOf(datas)
+	return uint32(realTypeDatas.Len())
+}
+
+func getNumRowsOfFloatVectorField(fDatas []float32, dim int64) (uint32, error) {
+	if dim <= 0 {
+		return 0, errDimLessThanOrEqualToZero(int(dim))
+	}
+	l := len(fDatas)
+	if int64(l)%dim != 0 {
+		return 0, fmt.Errorf("the length(%d) of float data should divide the dim(%d)", l, dim)
+	}
+	return uint32(int(int64(l) / dim)), nil
+}
+
+func getNumRowsOfBinaryVectorField(bDatas []byte, dim int64) (uint32, error) {
+	if dim <= 0 {
+		return 0, errDimLessThanOrEqualToZero(int(dim))
+	}
+	if dim%8 != 0 {
+		return 0, errDimShouldDivide8(int(dim))
+	}
+	l := len(bDatas)
+	if (8*int64(l))%dim != 0 {
+		return 0, fmt.Errorf("the num(%d) of all bits should divide the dim(%d)", 8*l, dim)
+	}
+	return uint32(int((8 * int64(l)) / dim)), nil
+}
+
+func (it *InsertTask) checkLengthOfFieldsData() error {
+	neededFieldsNum := 0
+	for _, field := range it.schema.Fields {
+		if !field.AutoID {
+			neededFieldsNum++
+		}
+	}
+
+	if len(it.req.FieldsData) < neededFieldsNum {
+		return errFieldsLessThanNeeded(len(it.req.FieldsData), neededFieldsNum)
+	}
+
+	return nil
+}
+
+func (it *InsertTask) checkRowNums() error {
+	if it.req.NumRows <= 0 {
+		return errNumRowsLessThanOrEqualToZero(it.req.NumRows)
+	}
+
+	if err := it.checkLengthOfFieldsData(); err != nil {
+		return err
+	}
+
+	rowNums := it.req.NumRows
+
+	for i, field := range it.req.FieldsData {
+		switch field.Field.(type) {
+		case *schemapb.FieldData_Scalars:
+			scalarField := field.GetScalars()
+			switch scalarField.Data.(type) {
+			case *schemapb.ScalarField_BoolData:
+				fieldNumRows := getNumRowsOfScalarField(scalarField.GetBoolData().Data)
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.ScalarField_IntData:
+				fieldNumRows := getNumRowsOfScalarField(scalarField.GetIntData().Data)
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.ScalarField_LongData:
+				fieldNumRows := getNumRowsOfScalarField(scalarField.GetLongData().Data)
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.ScalarField_FloatData:
+				fieldNumRows := getNumRowsOfScalarField(scalarField.GetFloatData().Data)
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.ScalarField_DoubleData:
+				fieldNumRows := getNumRowsOfScalarField(scalarField.GetDoubleData().Data)
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.ScalarField_BytesData:
+				return errUnsupportedDType("bytes")
+			case *schemapb.ScalarField_StringData:
+				return errUnsupportedDType("string")
+			case nil:
+				continue
+			default:
+				continue
+			}
+		case *schemapb.FieldData_Vectors:
+			vectorField := field.GetVectors()
+			switch vectorField.Data.(type) {
+			case *schemapb.VectorField_FloatVector:
+				dim := vectorField.GetDim()
+				fieldNumRows, err := getNumRowsOfFloatVectorField(vectorField.GetFloatVector().Data, dim)
+				if err != nil {
+					return err
+				}
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case *schemapb.VectorField_BinaryVector:
+				dim := vectorField.GetDim()
+				fieldNumRows, err := getNumRowsOfBinaryVectorField(vectorField.GetBinaryVector(), dim)
+				if err != nil {
+					return err
+				}
+				if fieldNumRows != rowNums {
+					return errNumRowsOfFieldDataMismatchPassed(i, fieldNumRows, rowNums)
+				}
+			case nil:
+				continue
+			default:
+				continue
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -441,10 +566,15 @@ func (it *InsertTask) transferColumnBasedRequestToRowBasedData() error {
 
 func (it *InsertTask) checkFieldAutoID() error {
 	// TODO(dragondriver): in fact, NumRows is not trustable, we should check all input fields
-	rowNums := it.req.NumRows
-	if len(it.req.FieldsData) == 0 || rowNums == 0 {
-		return fmt.Errorf("do not contain any data")
+	if it.req.NumRows <= 0 {
+		return errNumRowsLessThanOrEqualToZero(it.req.NumRows)
 	}
+
+	if err := it.checkLengthOfFieldsData(); err != nil {
+		return err
+	}
+
+	rowNums := it.req.NumRows
 
 	primaryFieldName := ""
 	autoIDFieldName := ""
@@ -519,6 +649,7 @@ func (it *InsertTask) checkFieldAutoID() error {
 	if autoIDLoc >= 0 {
 		fieldData := schemapb.FieldData{
 			FieldName: primaryFieldName,
+			FieldId:   -1,
 			Type:      schemapb.DataType_Int64,
 			Field: &schemapb.FieldData_Scalars{
 				Scalars: &schemapb.ScalarField{
@@ -610,6 +741,11 @@ func (it *InsertTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	it.schema = collSchema
+
+	err = it.checkRowNums()
+	if err != nil {
+		return err
+	}
 
 	err = it.checkFieldAutoID()
 	if err != nil {
@@ -1126,6 +1262,49 @@ func (dct *DropCollectionTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
+func translateOutputFields(outputFields []string, schema *schemapb.CollectionSchema, addPrimary bool) ([]string, error) {
+	var primaryFieldName string
+	scalarFieldNameMap := make(map[string]bool)
+	vectorFieldNameMap := make(map[string]bool)
+	resultFieldNameMap := make(map[string]bool)
+	resultFieldNames := make([]string, 0)
+
+	for _, field := range schema.Fields {
+		if field.IsPrimaryKey {
+			primaryFieldName = field.Name
+		}
+		if field.DataType == schemapb.DataType_BinaryVector || field.DataType == schemapb.DataType_FloatVector {
+			vectorFieldNameMap[field.Name] = true
+		} else {
+			scalarFieldNameMap[field.Name] = true
+		}
+	}
+
+	for _, outputFieldName := range outputFields {
+		outputFieldName = strings.TrimSpace(outputFieldName)
+		if outputFieldName == "*" {
+			for fieldName := range scalarFieldNameMap {
+				resultFieldNameMap[fieldName] = true
+			}
+		} else if outputFieldName == "%" {
+			for fieldName := range vectorFieldNameMap {
+				resultFieldNameMap[fieldName] = true
+			}
+		} else {
+			resultFieldNameMap[outputFieldName] = true
+		}
+	}
+
+	if addPrimary {
+		resultFieldNameMap[primaryFieldName] = true
+	}
+
+	for fieldName := range resultFieldNameMap {
+		resultFieldNames = append(resultFieldNames, fieldName)
+	}
+	return resultFieldNames, nil
+}
+
 type SearchTask struct {
 	Condition
 	*internalpb.SearchRequest
@@ -1259,6 +1438,14 @@ func (st *SearchTask) PreExecute(ctx context.Context) error {
 	if err != nil { // err is not nil if collection not exists
 		return err
 	}
+
+	outputFields, err := translateOutputFields(st.query.OutputFields, schema, false)
+	if err != nil {
+		return err
+	}
+	log.Debug("translate output fields", zap.Any("OutputFields", outputFields))
+	st.query.OutputFields = outputFields
+
 	if st.query.GetDslType() == commonpb.DslType_BoolExprV1 {
 		annsField, err := GetAttrByKeyFromRepeatedKV(AnnsFieldKey, st.query.SearchParams)
 		if err != nil {
@@ -1292,9 +1479,11 @@ func (st *SearchTask) PreExecute(ctx context.Context) error {
 
 		plan, err := CreateQueryPlan(schema, st.query.Dsl, annsField, queryInfo)
 		if err != nil {
-			return errors.New("invalid expression: " + st.query.Dsl)
+			//return errors.New("invalid expression: " + st.query.Dsl)
+			return err
 		}
 		for _, name := range st.query.OutputFields {
+			hitField := false
 			for _, field := range schema.Fields {
 				if field.Name == name {
 					if field.DataType == schemapb.DataType_BinaryVector || field.DataType == schemapb.DataType_FloatVector {
@@ -1303,7 +1492,13 @@ func (st *SearchTask) PreExecute(ctx context.Context) error {
 
 					st.SearchRequest.OutputFieldsId = append(st.SearchRequest.OutputFieldsId, field.FieldID)
 					plan.OutputFieldIds = append(plan.OutputFieldIds, field.FieldID)
+					hitField = true
+					break
 				}
+			}
+			if !hitField {
+				errMsg := "Field " + name + " not exist"
+				return errors.New(errMsg)
 			}
 		}
 
@@ -1312,12 +1507,19 @@ func (st *SearchTask) PreExecute(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		log.Debug("Proxy::SearchTask::PreExecute", zap.Any("plan.OutputFieldIds", plan.OutputFieldIds),
+			zap.Any("plan", plan.String()))
 	}
 	travelTimestamp := st.query.TravelTimestamp
 	if travelTimestamp == 0 {
 		travelTimestamp = st.BeginTs()
 	}
+	guaranteeTimestamp := st.query.GuaranteeTimestamp
+	if guaranteeTimestamp == 0 {
+		guaranteeTimestamp = st.BeginTs()
+	}
 	st.SearchRequest.TravelTimestamp = travelTimestamp
+	st.SearchRequest.GuaranteeTimestamp = guaranteeTimestamp
 
 	st.SearchRequest.ResultChannelID = Params.SearchResultChannelNames[0]
 	st.SearchRequest.DbID = 0 // todo
@@ -1412,77 +1614,29 @@ func (st *SearchTask) Execute(ctx context.Context) error {
 	return err
 }
 
-// TODO: add benchmark to compare with serial implementation
-func decodeSearchResultsParallel(searchResults []*internalpb.SearchResults, maxParallel int) ([][]*milvuspb.Hits, error) {
-	log.Debug("decodeSearchResultsParallel", zap.Any("NumOfGoRoutines", maxParallel))
-
-	hits := make([][]*milvuspb.Hits, 0)
-	// necessary to parallel this?
-	for _, partialSearchResult := range searchResults {
-		if partialSearchResult.Hits == nil || len(partialSearchResult.Hits) <= 0 {
-			continue
-		}
-
-		nq := len(partialSearchResult.Hits)
-		partialHits := make([]*milvuspb.Hits, nq)
-
-		f := func(idx int) error {
-			partialHit := &milvuspb.Hits{}
-
-			err := proto.Unmarshal(partialSearchResult.Hits[idx], partialHit)
-			if err != nil {
-				return err
-			}
-
-			partialHits[idx] = partialHit
-
-			return nil
-		}
-
-		err := funcutil.ProcessFuncParallel(nq, maxParallel, f, "decodePartialSearchResult")
-
-		if err != nil {
-			return nil, err
-		}
-
-		hits = append(hits, partialHits)
-	}
-
-	return hits, nil
-}
-
 func decodeSearchResultsSerial(searchResults []*internalpb.SearchResults) ([]*schemapb.SearchResultData, error) {
+	log.Debug("reduceSearchResultDataParallel", zap.Any("lenOfSearchResults", len(searchResults)))
+
 	results := make([]*schemapb.SearchResultData, 0)
 	// necessary to parallel this?
-	for _, partialSearchResult := range searchResults {
+	for i, partialSearchResult := range searchResults {
+		log.Debug("decodeSearchResultsSerial", zap.Any("i", i), zap.Any("SlicedBob", partialSearchResult.SlicedBlob))
 		if partialSearchResult.SlicedBlob == nil {
 			continue
 		}
 
 		var partialResultData schemapb.SearchResultData
 		err := proto.Unmarshal(partialSearchResult.SlicedBlob, &partialResultData)
+		log.Debug("decodeSearchResultsSerial, Unmarshal partitalSearchResult.SliceBlob", zap.Error(err))
 		if err != nil {
 			return nil, err
 		}
 
 		results = append(results, &partialResultData)
 	}
+	log.Debug("reduceSearchResultDataParallel", zap.Any("lenOfResults", len(results)))
 
 	return results, nil
-}
-
-// TODO: add benchmark to compare with serial implementation
-func decodeSearchResultsParallelByNq(searchResults []*internalpb.SearchResults) ([][]*milvuspb.Hits, error) {
-	if len(searchResults) <= 0 {
-		return nil, errors.New("no need to decode empty search results")
-	}
-	nq := len(searchResults[0].Hits)
-	return decodeSearchResultsParallel(searchResults, nq)
-}
-
-// TODO: add benchmark to compare with serial implementation
-func decodeSearchResultsParallelByCPU(searchResults []*internalpb.SearchResults) ([][]*milvuspb.Hits, error) {
-	return decodeSearchResultsParallel(searchResults, runtime.NumCPU())
 }
 
 func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb.SearchResultData, error) {
@@ -1494,82 +1648,15 @@ func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb
 	// return decodeSearchResultsParallelByCPU(searchResults)
 }
 
-func reduceSearchResultsParallel(hits [][]*milvuspb.Hits, nq, availableQueryNodeNum, topk int, metricType string, maxParallel int) *milvuspb.SearchResults {
-	log.Debug("reduceSearchResultsParallel", zap.Any("NumOfGoRoutines", maxParallel))
-
-	ret := &milvuspb.SearchResults{
-		Status: &commonpb.Status{
-			ErrorCode: 0,
-		},
-	}
-
-	const minFloat32 = -1 * float32(math.MaxFloat32)
-
-	f := func(idx int) error {
-		locs := make([]int, availableQueryNodeNum)
-		reducedHits := &milvuspb.Hits{
-			IDs:     make([]int64, 0),
-			RowData: make([][]byte, 0),
-			Scores:  make([]float32, 0),
-		}
-
-		for j := 0; j < topk; j++ {
-			valid := false
-			choice, maxDistance := 0, minFloat32
-			for q, loc := range locs { // query num, the number of ways to merge
-				if loc >= len(hits[q][idx].IDs) {
-					continue
-				}
-				distance := hits[q][idx].Scores[loc]
-				if distance > maxDistance || (math.Abs(float64(distance-maxDistance)) < math.SmallestNonzeroFloat32 && choice != q) {
-					choice = q
-					maxDistance = distance
-					valid = true
-				}
-			}
-			if !valid {
-				break
-			}
-			choiceOffset := locs[choice]
-			// check if distance is valid, `invalid` here means very very big,
-			// in this process, distance here is the smallest, so the rest of distance are all invalid
-			if hits[choice][idx].Scores[choiceOffset] <= minFloat32 {
-				break
-			}
-			reducedHits.IDs = append(reducedHits.IDs, hits[choice][idx].IDs[choiceOffset])
-			if hits[choice][idx].RowData != nil && len(hits[choice][idx].RowData) > 0 {
-				reducedHits.RowData = append(reducedHits.RowData, hits[choice][idx].RowData[choiceOffset])
-			}
-			reducedHits.Scores = append(reducedHits.Scores, hits[choice][idx].Scores[choiceOffset])
-			locs[choice]++
-		}
-
-		if metricType != "IP" {
-			for k := range reducedHits.Scores {
-				reducedHits.Scores[k] *= -1
-			}
-		}
-
-		// reducedHitsBs, err := proto.Marshal(reducedHits)
-		// if err != nil {
-		// return err
-		// }
-
-		// ret.Hits[idx] = reducedHitsBs
-
-		return nil
-	}
-
-	err := funcutil.ProcessFuncParallel(nq, maxParallel, f, "reduceSearchResults")
-	if err != nil {
-		return nil
-	}
-
-	return ret
-}
-
 func reduceSearchResultDataParallel(searchResultData []*schemapb.SearchResultData, nq, availableQueryNodeNum, topk int, metricType string, maxParallel int) (*milvuspb.SearchResults, error) {
-	log.Debug("reduceSearchResultDataParallel", zap.Any("NumOfGoRoutines", maxParallel))
+	log.Debug("reduceSearchResultDataParallel", zap.Any("lenOfsearchResultData", len(searchResultData)),
+		zap.Any("nq", nq), zap.Any("availableQueryNodeNum", availableQueryNodeNum),
+		zap.Any("topk", topk), zap.Any("metricType", metricType),
+		zap.Any("maxParallel", maxParallel))
+
+	for i, sData := range searchResultData {
+		log.Debug("reduceSearchResultDataParallel", zap.Any("i", i), zap.Any("len(FieldsData)", len(sData.FieldsData)))
+	}
 
 	ret := &milvuspb.SearchResults{
 		Status: &commonpb.Status{
@@ -1628,9 +1715,10 @@ func reduceSearchResultDataParallel(searchResultData []*schemapb.SearchResultDat
 			for k, fieldData := range searchResultData[choice].FieldsData {
 				switch fieldType := fieldData.Field.(type) {
 				case *schemapb.FieldData_Scalars:
-					if ret.Results.FieldsData[k].GetScalars() == nil {
+					if ret.Results.FieldsData[k] == nil || ret.Results.FieldsData[k].GetScalars() == nil {
 						ret.Results.FieldsData[k] = &schemapb.FieldData{
 							FieldName: fieldData.FieldName,
+							FieldId:   fieldData.FieldId,
 							Field: &schemapb.FieldData_Scalars{
 								Scalars: &schemapb.ScalarField{},
 							},
@@ -1703,9 +1791,10 @@ func reduceSearchResultDataParallel(searchResultData []*schemapb.SearchResultDat
 					}
 				case *schemapb.FieldData_Vectors:
 					dim := fieldType.Vectors.Dim
-					if ret.Results.FieldsData[k].GetVectors() == nil {
+					if ret.Results.FieldsData[k] == nil || ret.Results.FieldsData[k].GetVectors() == nil {
 						ret.Results.FieldsData[k] = &schemapb.FieldData{
 							FieldName: fieldData.FieldName,
+							FieldId:   fieldData.FieldId,
 							Field: &schemapb.FieldData_Vectors{
 								Vectors: &schemapb.VectorField{
 									Dim: dim,
@@ -1716,13 +1805,21 @@ func reduceSearchResultDataParallel(searchResultData []*schemapb.SearchResultDat
 					switch vectorType := fieldType.Vectors.Data.(type) {
 					case *schemapb.VectorField_BinaryVector:
 						if ret.Results.FieldsData[k].GetVectors().GetBinaryVector() == nil {
-							ret.Results.FieldsData[k].GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector = []byte{vectorType.BinaryVector[curIdx*int((dim/8))]}
+							bvec := &schemapb.VectorField_BinaryVector{
+								BinaryVector: vectorType.BinaryVector[curIdx*int((dim/8)) : (curIdx+1)*int((dim/8))],
+							}
+							ret.Results.FieldsData[k].GetVectors().Data = bvec
 						} else {
 							ret.Results.FieldsData[k].GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector = append(ret.Results.FieldsData[k].GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector, vectorType.BinaryVector[curIdx*int((dim/8)):(curIdx+1)*int((dim/8))]...)
 						}
 					case *schemapb.VectorField_FloatVector:
 						if ret.Results.FieldsData[k].GetVectors().GetFloatVector() == nil {
-							ret.Results.FieldsData[k].GetVectors().GetFloatVector().Data = []float32{vectorType.FloatVector.Data[curIdx*int(dim)]}
+							fvec := &schemapb.VectorField_FloatVector{
+								FloatVector: &schemapb.FloatArray{
+									Data: vectorType.FloatVector.Data[curIdx*int(dim) : (curIdx+1)*int(dim)],
+								},
+							}
+							ret.Results.FieldsData[k].GetVectors().Data = fvec
 						} else {
 							ret.Results.FieldsData[k].GetVectors().GetFloatVector().Data = append(ret.Results.FieldsData[k].GetVectors().GetFloatVector().Data, vectorType.FloatVector.Data[curIdx*int(dim):(curIdx+1)*int(dim)]...)
 						}
@@ -1747,34 +1844,8 @@ func reduceSearchResultDataParallel(searchResultData []*schemapb.SearchResultDat
 			ret.Results.Scores[k] *= -1
 		}
 	}
-	// err := funcutil.ProcessFuncParallel(nq, maxParallel, f, "reduceSearchResults")
-	// if err != nil {
-	// 	return nil
-	// }
 
 	return ret, nil
-}
-
-func reduceSearchResultsSerial(hits [][]*milvuspb.Hits, nq, availableQueryNodeNum, topk int, metricType string) *milvuspb.SearchResults {
-	return reduceSearchResultsParallel(hits, nq, availableQueryNodeNum, topk, metricType, 1)
-}
-
-// TODO: add benchmark to compare with serial implementation
-func reduceSearchResultsParallelByNq(hits [][]*milvuspb.Hits, nq, availableQueryNodeNum, topk int, metricType string) *milvuspb.SearchResults {
-	return reduceSearchResultsParallel(hits, nq, availableQueryNodeNum, topk, metricType, nq)
-}
-
-// TODO: add benchmark to compare with serial implementation
-func reduceSearchResultsParallelByCPU(hits [][]*milvuspb.Hits, nq, availableQueryNodeNum, topk int, metricType string) *milvuspb.SearchResults {
-	return reduceSearchResultsParallel(hits, nq, availableQueryNodeNum, topk, metricType, runtime.NumCPU())
-}
-
-func reduceSearchResults(hits [][]*milvuspb.Hits, nq, availableQueryNodeNum, topk int, metricType string) *milvuspb.SearchResults {
-	t := time.Now()
-	defer func() {
-		log.Debug("reduceSearchResults", zap.Any("time cost", time.Since(t)))
-	}()
-	return reduceSearchResultsParallelByCPU(hits, nq, availableQueryNodeNum, topk, metricType)
 }
 
 func reduceSearchResultData(searchResultData []*schemapb.SearchResultData, nq, availableQueryNodeNum, topk int, metricType string) (*milvuspb.SearchResults, error) {
@@ -1886,17 +1957,17 @@ func (st *SearchTask) PostExecute(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			if len(st.query.OutputFields) != 0 {
+			if len(st.query.OutputFields) != 0 && len(st.result.Results.FieldsData) != 0 {
 				for k, fieldName := range st.query.OutputFields {
 					for _, field := range schema.Fields {
-						if field.Name == fieldName {
-							st.result.Results.FieldsData[k].FieldName = fieldName
+						if st.result.Results.FieldsData[k] != nil && field.Name == fieldName {
+							st.result.Results.FieldsData[k].FieldName = field.Name
+							st.result.Results.FieldsData[k].FieldId = field.FieldID
 							st.result.Results.FieldsData[k].Type = field.DataType
 						}
 					}
 				}
 			}
-
 			log.Debug("Proxy Search PostExecute Done")
 			return nil
 		}
@@ -2051,30 +2122,31 @@ func (rt *RetrieveTask) PreExecute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	rt.retrieve.OutputFields, err = translateOutputFields(rt.retrieve.OutputFields, schema, true)
+	if err != nil {
+		return err
+	}
+	log.Debug("translate output fields", zap.Any("OutputFields", rt.retrieve.OutputFields))
 	if len(rt.retrieve.OutputFields) == 0 {
 		for _, field := range schema.Fields {
 			if field.FieldID >= 100 && field.DataType != schemapb.DataType_FloatVector && field.DataType != schemapb.DataType_BinaryVector {
-				rt.OutputFields = append(rt.OutputFields, field.Name)
+				rt.OutputFieldsId = append(rt.OutputFieldsId, field.FieldID)
 			}
 		}
 	} else {
+		addPrimaryKey := false
 		for _, reqField := range rt.retrieve.OutputFields {
 			findField := false
-			addPrimaryKey := false
 			for _, field := range schema.Fields {
 				if reqField == field.Name {
-					if field.DataType == schemapb.DataType_FloatVector || field.DataType == schemapb.DataType_BinaryVector {
-						errMsg := "Query does not support vector field currently"
-						return errors.New(errMsg)
-					}
 					if field.IsPrimaryKey {
 						addPrimaryKey = true
 					}
 					findField = true
-					rt.OutputFields = append(rt.OutputFields, reqField)
+					rt.OutputFieldsId = append(rt.OutputFieldsId, field.FieldID)
 				} else {
 					if field.IsPrimaryKey && !addPrimaryKey {
-						rt.OutputFields = append(rt.OutputFields, field.Name)
+						rt.OutputFieldsId = append(rt.OutputFieldsId, field.FieldID)
 						addPrimaryKey = true
 					}
 				}
@@ -2085,12 +2157,18 @@ func (rt *RetrieveTask) PreExecute(ctx context.Context) error {
 			}
 		}
 	}
+	log.Debug("translate output fields to field ids", zap.Any("OutputFieldsID", rt.OutputFieldsId))
 
 	travelTimestamp := rt.retrieve.TravelTimestamp
 	if travelTimestamp == 0 {
 		travelTimestamp = rt.BeginTs()
 	}
+	guaranteeTimestamp := rt.retrieve.GuaranteeTimestamp
+	if guaranteeTimestamp == 0 {
+		guaranteeTimestamp = rt.BeginTs()
+	}
 	rt.RetrieveRequest.TravelTimestamp = travelTimestamp
+	rt.RetrieveRequest.GuaranteeTimestamp = guaranteeTimestamp
 
 	rt.ResultChannelID = Params.RetrieveResultChannelNames[0]
 	rt.DbID = 0 // todo(yukun)
@@ -2329,8 +2407,9 @@ func (rt *RetrieveTask) PostExecute(ctx context.Context) error {
 		}
 		for i := 0; i < len(rt.result.FieldsData); i++ {
 			for _, field := range schema.Fields {
-				if field.Name == rt.OutputFields[i] {
+				if field.FieldID == rt.OutputFieldsId[i] {
 					rt.result.FieldsData[i].FieldName = field.Name
+					rt.result.FieldsData[i].FieldId = field.FieldID
 					rt.result.FieldsData[i].Type = field.DataType
 				}
 			}
@@ -2500,6 +2579,8 @@ func (dct *DescribeCollectionTask) Execute(ctx context.Context) error {
 		dct.result.CollectionID = result.CollectionID
 		dct.result.VirtualChannelNames = result.VirtualChannelNames
 		dct.result.PhysicalChannelNames = result.PhysicalChannelNames
+		dct.result.CreatedTimestamp = result.CreatedTimestamp
+		dct.result.CreatedUtcTimestamp = result.CreatedUtcTimestamp
 
 		for _, field := range result.Schema.Fields {
 			if field.FieldID >= 100 { // TODO(dragondriver): use StartOfUserFieldID replacing 100
@@ -2796,19 +2877,24 @@ func (sct *ShowCollectionsTask) Execute(ctx context.Context) error {
 		}
 
 		sct.result = &milvuspb.ShowCollectionsResponse{
-			Status:          resp.Status,
-			CollectionNames: make([]string, 0, len(resp.CollectionIDs)),
-			CollectionIds:   make([]int64, 0, len(resp.CollectionIDs)),
+			Status:               resp.Status,
+			CollectionNames:      make([]string, 0, len(resp.CollectionIDs)),
+			CollectionIds:        make([]int64, 0, len(resp.CollectionIDs)),
+			CreatedTimestamps:    make([]uint64, 0, len(resp.CollectionIDs)),
+			CreatedUtcTimestamps: make([]uint64, 0, len(resp.CollectionIDs)),
 		}
 
-		idMap := make(map[int64]string)
-		for i, name := range respFromRootCoord.CollectionNames {
-			idMap[respFromRootCoord.CollectionIds[i]] = name
+		idMap := make(map[int64]int) // id -> location of respFromRootCoord
+		for i := range respFromRootCoord.CollectionNames {
+			idMap[respFromRootCoord.CollectionIds[i]] = i
 		}
 
 		for _, id := range resp.CollectionIDs {
+			loc := idMap[id]
 			sct.result.CollectionIds = append(sct.result.CollectionIds, id)
-			sct.result.CollectionNames = append(sct.result.CollectionNames, idMap[id])
+			sct.result.CollectionNames = append(sct.result.CollectionNames, respFromRootCoord.CollectionNames[loc])
+			sct.result.CreatedTimestamps = append(sct.result.CreatedTimestamps, respFromRootCoord.CreatedTimestamps[loc])
+			sct.result.CreatedUtcTimestamps = append(sct.result.CreatedUtcTimestamps, respFromRootCoord.CreatedUtcTimestamps[loc])
 		}
 	} else {
 		sct.result = respFromRootCoord
@@ -3370,6 +3456,10 @@ func (dit *DropIndexTask) PreExecute(ctx context.Context) error {
 
 	if err := ValidateFieldName(fieldName); err != nil {
 		return err
+	}
+
+	if dit.IndexName == "" {
+		dit.IndexName = Params.DefaultIndexName
 	}
 
 	return nil

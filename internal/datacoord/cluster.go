@@ -8,63 +8,85 @@
 // Unless required by applicable law or agreed to in writing, software distributed under the License
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
+
 package datacoord
 
 import (
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/golang/protobuf/proto"
+	grpcdatanodeclient "github.com/milvus-io/milvus/internal/distributed/datanode/client"
+	"github.com/milvus-io/milvus/internal/kv"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
-	"github.com/milvus-io/milvus/internal/util/retry"
+	"github.com/milvus-io/milvus/internal/types"
 	"go.uber.org/zap"
 	"golang.org/x/net/context"
 )
 
-type cluster struct {
-	mu             sync.RWMutex
-	ctx            context.Context
-	dataManager    *clusterNodeManager
-	sessionManager sessionManager
-	posProvider    positionProvider
+const clusterPrefix = "cluster-prefix/"
+const clusterBuffer = "cluster-buffer"
+const nodeEventChBufferSize = 1024
 
-	startupPolicy    clusterStartupPolicy
+const eventTimeout = 5 * time.Second
+
+type EventType int
+
+const (
+	Register      EventType = 1
+	UnRegister    EventType = 2
+	WatchChannel  EventType = 3
+	FlushSegments EventType = 4
+)
+
+type NodeEventType int
+
+const (
+	Watch NodeEventType = 0
+	Flush NodeEventType = 1
+)
+
+type Event struct {
+	Type EventType
+	Data interface{}
+}
+
+type WatchChannelParams struct {
+	Channel      string
+	CollectionID UniqueID
+}
+
+type Cluster struct {
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
+	wg               sync.WaitGroup
+	nodes            ClusterStore
+	posProvider      positionProvider
+	chanBuffer       []*datapb.ChannelStatus //Unwatched channels buffer
+	kv               kv.TxnKV
 	registerPolicy   dataNodeRegisterPolicy
 	unregisterPolicy dataNodeUnregisterPolicy
 	assignPolicy     channelAssignPolicy
+	eventCh          chan *Event
 }
 
-type clusterOption struct {
-	apply func(c *cluster)
+type ClusterOption func(c *Cluster)
+
+func withRegisterPolicy(p dataNodeRegisterPolicy) ClusterOption {
+	return func(c *Cluster) { c.registerPolicy = p }
 }
 
-func withStartupPolicy(p clusterStartupPolicy) clusterOption {
-	return clusterOption{
-		apply: func(c *cluster) { c.startupPolicy = p },
-	}
+func withUnregistorPolicy(p dataNodeUnregisterPolicy) ClusterOption {
+	return func(c *Cluster) { c.unregisterPolicy = p }
 }
 
-func withRegisterPolicy(p dataNodeRegisterPolicy) clusterOption {
-	return clusterOption{
-		apply: func(c *cluster) { c.registerPolicy = p },
-	}
-}
-
-func withUnregistorPolicy(p dataNodeUnregisterPolicy) clusterOption {
-	return clusterOption{
-		apply: func(c *cluster) { c.unregisterPolicy = p },
-	}
-}
-
-func withAssignPolicy(p channelAssignPolicy) clusterOption {
-	return clusterOption{
-		apply: func(c *cluster) { c.assignPolicy = p },
-	}
-}
-
-func defaultStartupPolicy() clusterStartupPolicy {
-	return newWatchRestartsStartupPolicy()
+func withAssignPolicy(p channelAssignPolicy) ClusterOption {
+	return func(c *Cluster) { c.assignPolicy = p }
 }
 
 func defaultRegisterPolicy() dataNodeRegisterPolicy {
@@ -79,236 +101,334 @@ func defaultAssignPolicy() channelAssignPolicy {
 	return newBalancedAssignPolicy()
 }
 
-func newCluster(ctx context.Context, dataManager *clusterNodeManager,
-	sessionManager sessionManager, posProvider positionProvider,
-	opts ...clusterOption) *cluster {
-	c := &cluster{
+func NewCluster(ctx context.Context, kv kv.TxnKV, store ClusterStore,
+	posProvider positionProvider, opts ...ClusterOption) (*Cluster, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	c := &Cluster{
 		ctx:              ctx,
-		sessionManager:   sessionManager,
-		dataManager:      dataManager,
+		cancel:           cancel,
+		kv:               kv,
+		nodes:            store,
 		posProvider:      posProvider,
-		startupPolicy:    defaultStartupPolicy(),
+		chanBuffer:       []*datapb.ChannelStatus{},
 		registerPolicy:   defaultRegisterPolicy(),
 		unregisterPolicy: defaultUnregisterPolicy(),
 		assignPolicy:     defaultAssignPolicy(),
-	}
-	for _, opt := range opts {
-		opt.apply(c)
+		eventCh:          make(chan *Event, nodeEventChBufferSize),
 	}
 
-	return c
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	if err := c.loadFromKv(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
-func (c *cluster) startup(dataNodes []*datapb.DataNodeInfo) error {
-	deltaChange := c.dataManager.updateCluster(dataNodes)
-	nodes, chanBuffer := c.dataManager.getDataNodes(false)
-	var rets []*datapb.DataNodeInfo
-	var err error
-	rets, chanBuffer = c.startupPolicy.apply(nodes, deltaChange, chanBuffer)
-	c.dataManager.updateDataNodes(rets, chanBuffer)
-	rets, err = c.watch(rets)
+func (c *Cluster) loadFromKv() error {
+	_, values, err := c.kv.LoadWithPrefix(clusterPrefix)
 	if err != nil {
-		log.Warn("Failed to watch all the status change", zap.Error(err))
-		//does not trigger new another refresh, pending evt will do
+		return err
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer)
+
+	for _, v := range values {
+		info := &datapb.DataNodeInfo{}
+		if err := proto.UnmarshalText(v, info); err != nil {
+			return err
+		}
+
+		node := NewNodeInfo(c.ctx, info)
+		c.nodes.SetNode(info.GetVersion(), node)
+		go c.handleEvent(node)
+	}
+	dn, _ := c.kv.Load(clusterBuffer)
+	//TODO add not value error check
+	if dn != "" {
+		info := &datapb.DataNodeInfo{}
+		if err := proto.UnmarshalText(dn, info); err != nil {
+			return err
+		}
+		c.chanBuffer = info.Channels
+	}
+
 	return nil
 }
 
-// refresh rough refresh datanode status after event received
-func (c *cluster) refresh(dataNodes []*datapb.DataNodeInfo) error {
-	deltaChange := c.dataManager.updateCluster(dataNodes)
-	nodes, chanBuffer := c.dataManager.getDataNodes(false)
-	var rets []*datapb.DataNodeInfo
-	var err error
-	rets, chanBuffer = c.startupPolicy.apply(nodes, deltaChange, chanBuffer)
-	c.dataManager.updateDataNodes(rets, chanBuffer)
-	rets, err = c.watch(rets)
-	if err != nil {
-		log.Warn("Failed to watch all the status change", zap.Error(err))
-		//does not trigger new another refresh, pending evt will do
+func (c *Cluster) Flush(segments []*datapb.SegmentInfo) {
+	c.eventCh <- &Event{
+		Type: FlushSegments,
+		Data: segments,
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer) // even if some watch failed, status should sync into etcd
-	return err
 }
 
-// paraRun parallel run, with max Parallel limit
-func parraRun(works []func(), maxRunner int) {
-	wg := sync.WaitGroup{}
-	ch := make(chan func())
-	wg.Add(len(works))
+func (c *Cluster) Register(node *NodeInfo) {
+	c.eventCh <- &Event{
+		Type: Register,
+		Data: node,
+	}
+}
 
-	for i := 0; i < maxRunner; i++ {
-		go func() {
-			work, ok := <-ch
-			if !ok {
-				return
+func (c *Cluster) UnRegister(node *NodeInfo) {
+	c.eventCh <- &Event{
+		Type: UnRegister,
+		Data: node,
+	}
+}
+
+func (c *Cluster) Watch(channel string, collectionID UniqueID) {
+	c.eventCh <- &Event{
+		Type: WatchChannel,
+		Data: &WatchChannelParams{
+			Channel:      channel,
+			CollectionID: collectionID,
+		},
+	}
+}
+
+func (c *Cluster) handleNodeEvent() {
+	defer c.wg.Done()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case e := <-c.eventCh:
+			switch e.Type {
+			case Register:
+				c.handleRegister(e.Data.(*NodeInfo))
+			case UnRegister:
+				c.handleUnRegister(e.Data.(*NodeInfo))
+			case WatchChannel:
+				params := e.Data.(*WatchChannelParams)
+				c.handleWatchChannel(params.Channel, params.CollectionID)
+			case FlushSegments:
+				c.handleFlush(e.Data.([]*datapb.SegmentInfo))
+			default:
+				log.Warn("Unknow node event type")
 			}
-			work()
-			wg.Done()
-		}()
+		}
 	}
-	for _, work := range works {
-		ch <- work
-	}
-	wg.Wait()
-	close(ch)
 }
 
-func (c *cluster) watch(nodes []*datapb.DataNodeInfo) ([]*datapb.DataNodeInfo, error) {
-	works := make([]func(), 0, len(nodes))
-	mut := sync.Mutex{}
-	errs := make([]error, 0, len(nodes))
+func (c *Cluster) handleEvent(node *NodeInfo) {
+	log.Debug("start handle event", zap.Any("node", node))
+	ctx := node.ctx
+	ch := node.GetEventChannel()
+	version := node.Info.GetVersion()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-ch:
+			cli, err := c.getOrCreateClient(ctx, version)
+			if err != nil {
+				log.Warn("failed to get client", zap.Int64("nodeID", version), zap.Error(err))
+				continue
+			}
+			switch event.Type {
+			case Watch:
+				req, ok := event.Req.(*datapb.WatchDmChannelsRequest)
+				if !ok {
+					log.Warn("request type is not Watch")
+					continue
+				}
+				log.Debug("receive watch event", zap.Any("event", event), zap.Any("node", node))
+				tCtx, cancel := context.WithTimeout(ctx, eventTimeout)
+				resp, err := cli.WatchDmChannels(tCtx, req)
+				cancel()
+				if err = VerifyResponse(resp, err); err != nil {
+					log.Warn("Failed to watch dm channels", zap.String("addr", node.Info.GetAddress()))
+				}
+				c.mu.Lock()
+				c.nodes.SetWatched(node.Info.GetVersion(), parseChannelsFromReq(req))
+				c.mu.Unlock()
+				if err = c.saveNode(node); err != nil {
+					log.Warn("failed to save node info", zap.Any("node", node))
+					continue
+				}
+			case Flush:
+				req, ok := event.Req.(*datapb.FlushSegmentsRequest)
+				if !ok {
+					log.Warn("request type is not Flush")
+					continue
+				}
+				tCtx, cancel := context.WithTimeout(ctx, eventTimeout)
+				resp, err := cli.FlushSegments(tCtx, req)
+				cancel()
+				if err = VerifyResponse(resp, err); err != nil {
+					log.Warn("failed to flush segments", zap.String("addr", node.Info.GetAddress()))
+				}
+			default:
+				log.Warn("unknown event type", zap.Any("type", event.Type))
+			}
+		}
+	}
+}
+
+func (c *Cluster) getOrCreateClient(ctx context.Context, id UniqueID) (types.DataNode, error) {
+	c.mu.Lock()
+	node := c.nodes.GetNode(id)
+	c.mu.Unlock()
+	if node == nil {
+		return nil, fmt.Errorf("node %d is not alive", id)
+	}
+	cli := node.GetClient()
+	if cli != nil {
+		return cli, nil
+	}
+	var err error
+	cli, err = createClient(ctx, node.Info.GetAddress())
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.nodes.SetClient(node.Info.GetVersion(), cli)
+	return cli, nil
+}
+
+func parseChannelsFromReq(req *datapb.WatchDmChannelsRequest) []string {
+	channels := make([]string, 0, len(req.GetVchannels()))
+	for _, vc := range req.GetVchannels() {
+		channels = append(channels, vc.ChannelName)
+	}
+	return channels
+}
+
+func createClient(ctx context.Context, addr string) (types.DataNode, error) {
+	cli, err := grpcdatanodeclient.NewClient(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	if err := cli.Init(); err != nil {
+		return nil, err
+	}
+	if err := cli.Start(); err != nil {
+		return nil, err
+	}
+	return cli, nil
+}
+
+// Startup applies statup policy
+func (c *Cluster) Startup(nodes []*NodeInfo) {
+	c.wg.Add(1)
+	go c.handleNodeEvent()
+	// before startup, we have restore all nodes recorded last time. We should
+	// find new created/offlined/restarted nodes and adjust channels allocation.
+	addNodes, deleteNodes := c.updateCluster(nodes)
+	for _, node := range addNodes {
+		c.Register(node)
+	}
+
+	for _, node := range deleteNodes {
+		c.UnRegister(node)
+	}
+}
+
+func (c *Cluster) updateCluster(nodes []*NodeInfo) (newNodes []*NodeInfo, offlines []*NodeInfo) {
+	var onCnt, offCnt float64
+	currentOnline := make(map[int64]struct{})
 	for _, n := range nodes {
-		works = append(works, func() {
-			logMsg := fmt.Sprintf("Begin to watch channels for node %s:", n.Address)
-			uncompletes := make([]vchannel, 0, len(n.Channels))
-			for _, ch := range n.Channels {
-				if ch.State == datapb.ChannelWatchState_Uncomplete {
-					if len(uncompletes) == 0 {
-						logMsg += ch.Name
-					} else {
-						logMsg += "," + ch.Name
-					}
-					uncompletes = append(uncompletes, vchannel{
-						CollectionID: ch.CollectionID,
-						DmlChannel:   ch.Name,
-					})
-				}
-			}
-
-			if len(uncompletes) == 0 {
-				return // all set, just return
-			}
-			log.Debug(logMsg)
-
-			vchanInfos, err := c.posProvider.GetVChanPositions(uncompletes, true)
-			if err != nil {
-				log.Warn("get vchannel position failed", zap.Error(err))
-				mut.Lock()
-				errs = append(errs, err)
-				mut.Unlock()
-				return
-			}
-			cli, err := c.sessionManager.getOrCreateSession(n.Address) // this might take time if address went offline
-			if err != nil {
-				log.Warn("get session failed", zap.String("addr", n.Address), zap.Error(err))
-				mut.Lock()
-				errs = append(errs, err)
-				mut.Unlock()
-				return
-			}
-			req := &datapb.WatchDmChannelsRequest{
-				Base: &commonpb.MsgBase{
-					SourceID: Params.NodeID,
-				},
-				Vchannels: vchanInfos,
-			}
-			resp, err := cli.WatchDmChannels(c.ctx, req)
-			if err != nil {
-				log.Warn("watch dm channel failed", zap.String("addr", n.Address), zap.Error(err))
-				mut.Lock()
-				errs = append(errs, err)
-				mut.Unlock()
-			}
-			if resp.ErrorCode != commonpb.ErrorCode_Success {
-				log.Warn("watch channels failed", zap.String("address", n.Address), zap.Error(err))
-				mut.Lock()
-				errs = append(errs, fmt.Errorf("watch fail with stat %v, msg:%s", resp.ErrorCode, resp.Reason))
-				mut.Unlock()
-				return
-			}
-			for _, ch := range n.Channels {
-				if ch.State == datapb.ChannelWatchState_Uncomplete {
-					ch.State = datapb.ChannelWatchState_Complete
-				}
-			}
-		})
+		currentOnline[n.Info.GetVersion()] = struct{}{}
+		node := c.nodes.GetNode(n.Info.GetVersion())
+		if node == nil {
+			newNodes = append(newNodes, n)
+		}
+		onCnt++
 	}
-	parraRun(works, 3)
-	return nodes, retry.ErrorList(errs)
+
+	currNodes := c.nodes.GetNodes()
+	for _, node := range currNodes {
+		_, has := currentOnline[node.Info.GetVersion()]
+		if !has {
+			offlines = append(offlines, node)
+			offCnt++
+		}
+	}
+	metrics.DataCoordDataNodeList.WithLabelValues("online").Set(onCnt)
+	metrics.DataCoordDataNodeList.WithLabelValues("offline").Set(offCnt)
+	return
 }
 
-func (c *cluster) register(n *datapb.DataNodeInfo) {
+func (c *Cluster) handleRegister(n *NodeInfo) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.dataManager.register(n)
-	cNodes, chanBuffer := c.dataManager.getDataNodes(true)
-	var rets []*datapb.DataNodeInfo
-	var err error
-	log.Debug("before register policy applied", zap.Any("n.Channels", n.Channels), zap.Any("buffer", chanBuffer))
-	rets, chanBuffer = c.registerPolicy.apply(cNodes, n, chanBuffer)
-	log.Debug("after register policy applied", zap.Any("ret", rets), zap.Any("buffer", chanBuffer))
-	c.dataManager.updateDataNodes(rets, chanBuffer)
-	rets, err = c.watch(rets)
-	if err != nil {
-		log.Warn("Failed to watch all the status change", zap.Error(err))
-		//does not trigger new another refresh, pending evt will do
+	cNodes := c.nodes.GetNodes()
+	var nodes []*NodeInfo
+	log.Debug("before register policy applied", zap.Any("n.Channels", n.Info.GetChannels()), zap.Any("buffer", c.chanBuffer))
+	nodes, c.chanBuffer = c.registerPolicy(cNodes, n, c.chanBuffer)
+	log.Debug("after register policy applied", zap.Any("ret", nodes), zap.Any("buffer", c.chanBuffer))
+	go c.handleEvent(n)
+	c.txnSaveNodesAndBuffer(nodes, c.chanBuffer)
+	for _, node := range nodes {
+		c.nodes.SetNode(node.Info.GetVersion(), node)
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer)
+	c.mu.Unlock()
+	for _, node := range nodes {
+		c.watch(node)
+	}
 }
 
-func (c *cluster) unregister(n *datapb.DataNodeInfo) {
+func (c *Cluster) handleUnRegister(n *NodeInfo) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.sessionManager.releaseSession(n.Address)
-	oldNode := c.dataManager.unregister(n)
-	if oldNode != nil {
-		n = oldNode
+	node := c.nodes.GetNode(n.Info.GetVersion())
+	if node == nil {
+		c.mu.Unlock()
+		return
 	}
-	cNodes, chanBuffer := c.dataManager.getDataNodes(true)
-	log.Debug("before unregister policy applied", zap.Any("n.Channels", n.Channels), zap.Any("buffer", chanBuffer))
-	var rets []*datapb.DataNodeInfo
-	var err error
+	node.Dispose()
+	// save deleted node to kv
+	deleted := node.Clone(SetChannels(nil))
+	c.saveNode(deleted)
+	c.nodes.DeleteNode(n.Info.GetVersion())
+
+	cNodes := c.nodes.GetNodes()
+	log.Debug("before unregister policy applied", zap.Any("node.Channels", node.Info.GetChannels()), zap.Any("buffer", c.chanBuffer), zap.Any("nodes", cNodes))
+	var rets []*NodeInfo
 	if len(cNodes) == 0 {
-		for _, chStat := range n.Channels {
+		for _, chStat := range node.Info.GetChannels() {
 			chStat.State = datapb.ChannelWatchState_Uncomplete
-			chanBuffer = append(chanBuffer, chStat)
+			c.chanBuffer = append(c.chanBuffer, chStat)
 		}
 	} else {
-		rets = c.unregisterPolicy.apply(cNodes, n)
+		rets = c.unregisterPolicy(cNodes, node)
 	}
-	log.Debug("after register policy applied", zap.Any("ret", rets), zap.Any("buffer", chanBuffer))
-	c.dataManager.updateDataNodes(rets, chanBuffer)
-	rets, err = c.watch(rets)
-	if err != nil {
-		log.Warn("Failed to watch all the status change", zap.Error(err))
-		//does not trigger new another refresh, pending evt will do
+	log.Debug("after unregister policy", zap.Any("rets", rets))
+	c.txnSaveNodesAndBuffer(rets, c.chanBuffer)
+	for _, node := range rets {
+		c.nodes.SetNode(node.Info.GetVersion(), node)
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer)
+	c.mu.Unlock()
+	for _, node := range rets {
+		c.watch(node)
+	}
 }
 
-func (c *cluster) watchIfNeeded(channel string, collectionID UniqueID) {
+func (c *Cluster) handleWatchChannel(channel string, collectionID UniqueID) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	cNodes, chanBuffer := c.dataManager.getDataNodes(true)
-	var rets []*datapb.DataNodeInfo
-	var err error
+	cNodes := c.nodes.GetNodes()
+	var rets []*NodeInfo
 	if len(cNodes) == 0 { // no nodes to assign, put into buffer
-		chanBuffer = append(chanBuffer, &datapb.ChannelStatus{
+		c.chanBuffer = append(c.chanBuffer, &datapb.ChannelStatus{
 			Name:         channel,
 			CollectionID: collectionID,
 			State:        datapb.ChannelWatchState_Uncomplete,
 		})
 	} else {
-		rets = c.assignPolicy.apply(cNodes, channel, collectionID)
+		rets = c.assignPolicy(cNodes, channel, collectionID)
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer)
-	rets, err = c.watch(rets)
-	if err != nil {
-		log.Warn("Failed to watch all the status change", zap.Error(err))
-		//does not trigger new another refresh, pending evt will do
+	c.txnSaveNodesAndBuffer(rets, c.chanBuffer)
+	for _, node := range rets {
+		c.nodes.SetNode(node.Info.GetVersion(), node)
 	}
-	c.dataManager.updateDataNodes(rets, chanBuffer)
+	c.mu.Unlock()
+	for _, node := range rets {
+		c.watch(node)
+	}
 }
 
-func (c *cluster) flush(segments []*datapb.SegmentInfo) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *Cluster) handleFlush(segments []*datapb.SegmentInfo) {
 	m := make(map[string]map[UniqueID][]UniqueID) // channel-> map[collectionID]segmentIDs
-
 	for _, seg := range segments {
 		if _, ok := m[seg.InsertChannel]; !ok {
 			m[seg.InsertChannel] = make(map[UniqueID][]UniqueID)
@@ -317,23 +437,20 @@ func (c *cluster) flush(segments []*datapb.SegmentInfo) {
 		m[seg.InsertChannel][seg.CollectionID] = append(m[seg.InsertChannel][seg.CollectionID], seg.ID)
 	}
 
-	dataNodes, _ := c.dataManager.getDataNodes(true)
+	c.mu.Lock()
+	dataNodes := c.nodes.GetNodes()
+	c.mu.Unlock()
 
-	channel2Node := make(map[string]string)
+	channel2Node := make(map[string]*NodeInfo)
 	for _, node := range dataNodes {
-		for _, chstatus := range node.Channels {
-			channel2Node[chstatus.Name] = node.Address
+		for _, chstatus := range node.Info.GetChannels() {
+			channel2Node[chstatus.Name] = node
 		}
 	}
 
 	for ch, coll2seg := range m {
 		node, ok := channel2Node[ch]
 		if !ok {
-			continue
-		}
-		cli, err := c.sessionManager.getOrCreateSession(node)
-		if err != nil {
-			log.Warn("get session failed", zap.String("addr", node), zap.Error(err))
 			continue
 		}
 		for coll, segs := range coll2seg {
@@ -345,22 +462,94 @@ func (c *cluster) flush(segments []*datapb.SegmentInfo) {
 				CollectionID: coll,
 				SegmentIDs:   segs,
 			}
-			resp, err := cli.FlushSegments(c.ctx, req)
-			if err != nil {
-				log.Warn("flush segment failed", zap.String("addr", node), zap.Error(err))
-				continue
+			ch := node.GetEventChannel()
+			e := &NodeEvent{
+				Type: Flush,
+				Req:  req,
 			}
-			if resp.ErrorCode != commonpb.ErrorCode_Success {
-				log.Warn("flush segment failed", zap.String("dataNode", node), zap.Error(err))
-				continue
-			}
-			log.Debug("flush segments succeed", zap.Any("segmentIDs", segs))
+			ch <- e
 		}
 	}
 }
 
-func (c *cluster) releaseSessions() {
+func (c *Cluster) watch(n *NodeInfo) {
+	channelNames := make([]string, 0)
+	uncompletes := make([]vchannel, 0, len(n.Info.Channels))
+	for _, ch := range n.Info.GetChannels() {
+		if ch.State == datapb.ChannelWatchState_Uncomplete {
+			channelNames = append(channelNames, ch.GetName())
+			uncompletes = append(uncompletes, vchannel{
+				CollectionID: ch.CollectionID,
+				DmlChannel:   ch.Name,
+			})
+		}
+	}
+
+	if len(uncompletes) == 0 {
+		return // all set, just return
+	}
+	log.Debug("plan to watch channel", zap.String("node", n.Info.GetAddress()),
+		zap.Int64("version", n.Info.GetVersion()), zap.Strings("channels", channelNames))
+
+	vchanInfos, err := c.posProvider.GetVChanPositions(uncompletes, true)
+	if err != nil {
+		log.Warn("get vchannel position failed", zap.Error(err))
+		return
+	}
+	req := &datapb.WatchDmChannelsRequest{
+		Base: &commonpb.MsgBase{
+			SourceID: Params.NodeID,
+		},
+		Vchannels: vchanInfos,
+	}
+	e := &NodeEvent{
+		Type: Watch,
+		Req:  req,
+	}
+	ch := n.GetEventChannel()
+	log.Debug("put watch event to node channel", zap.Any("e", e), zap.Any("n", n.Info))
+	ch <- e
+}
+
+func (c *Cluster) saveNode(n *NodeInfo) error {
+	key := fmt.Sprintf("%s%d", clusterPrefix, n.Info.GetVersion())
+	value := proto.MarshalTextString(n.Info)
+	return c.kv.Save(key, value)
+}
+
+func (c *Cluster) txnSaveNodesAndBuffer(nodes []*NodeInfo, buffer []*datapb.ChannelStatus) error {
+	if len(nodes) == 0 && len(buffer) == 0 {
+		return nil
+	}
+	data := make(map[string]string)
+	for _, n := range nodes {
+		key := fmt.Sprintf("%s%d", clusterPrefix, n.Info.GetVersion())
+		value := proto.MarshalTextString(n.Info)
+		data[key] = value
+	}
+
+	// short cut, reusing datainfo to store array of channel status
+	bufNode := &datapb.DataNodeInfo{
+		Channels: buffer,
+	}
+
+	data[clusterBuffer] = proto.MarshalTextString(bufNode)
+	return c.kv.MultiSave(data)
+}
+
+func (c *Cluster) GetNodes() []*NodeInfo {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sessionManager.release()
+	return c.nodes.GetNodes()
+}
+
+func (c *Cluster) Close() {
+	c.cancel()
+	c.wg.Wait()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	nodes := c.nodes.GetNodes()
+	for _, node := range nodes {
+		node.Dispose()
+	}
 }

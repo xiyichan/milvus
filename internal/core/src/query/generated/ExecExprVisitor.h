@@ -24,16 +24,19 @@ namespace milvus::query {
 class ExecExprVisitor : public ExprVisitor {
  public:
     void
-    visit(BoolUnaryExpr& expr) override;
+    visit(LogicalUnaryExpr& expr) override;
 
     void
-    visit(BoolBinaryExpr& expr) override;
+    visit(LogicalBinaryExpr& expr) override;
 
     void
     visit(TermExpr& expr) override;
 
     void
     visit(RangeExpr& expr) override;
+
+    void
+    visit(CompareExpr& expr) override;
 
  public:
     using RetType = std::deque<boost::dynamic_bitset<>>;
@@ -62,6 +65,10 @@ class ExecExprVisitor : public ExprVisitor {
     template <typename T>
     auto
     ExecTermVisitorImpl(TermExpr& expr_raw) -> RetType;
+
+    template <typename CmpFunc>
+    auto
+    ExecCompareExprDispatcher(CompareExpr& expr, CmpFunc cmp_func) -> RetType;
 
  private:
     const segcore::SegmentInternalInterface& segment_;
