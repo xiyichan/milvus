@@ -3,6 +3,8 @@ package mqclient
 import (
 	"errors"
 	"github.com/Shopify/sarama"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 
 	"context"
 )
@@ -40,6 +42,7 @@ func (kc *kafkaConsumer) Subscription() string {
 	return kc.groupID
 }
 func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
+	log.Info("kafka groupID", zap.Any("group_id", kc.groupID))
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	if kc.msgChannel == nil {
 		kc.msgChannel = make(chan ConsumerMessage)

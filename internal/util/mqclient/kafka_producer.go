@@ -8,8 +8,9 @@ import (
 )
 
 type kafkaProducer struct {
-	p sarama.SyncProducer
-	c sarama.Client
+	p     sarama.SyncProducer
+	c     sarama.Client
+	topic string
 }
 
 func (kp *kafkaProducer) Topic() string {
