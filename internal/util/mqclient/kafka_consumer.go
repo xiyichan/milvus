@@ -40,6 +40,7 @@ func (kc *kafkaConsumer) Subscription() string {
 	return kc.groupID
 }
 func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
+	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	if kc.msgChannel == nil {
 		kc.msgChannel = make(chan ConsumerMessage)
 		//if !kc.hasSeek {
