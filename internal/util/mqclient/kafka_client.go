@@ -72,7 +72,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	//	}
 	//}
 
-	consumer := &kafkaConsumer{g: group, c: kc.client, topicName: options.Topic}
+	consumer := &kafkaConsumer{g: group, c: kc.client, topicName: options.Topic, groupID: options.SubscriptionName}
 	return consumer, nil
 
 }
