@@ -47,7 +47,8 @@ func newMsgFactory(localMsg bool, kafka bool, rocksmqPath string) msgstream.Fact
 		}
 
 	}
-	return msgstream.NewPmsFactory()
+	return msgstream.NewKmsFactory()
+	//return msgstream.NewPmsFactory()
 }
 
 type MilvusRoles struct {
