@@ -239,7 +239,7 @@ func main() {
 		role.EnableIndexNode = true
 		role.EnableMsgStreamCoord = true
 		localMsg = true
-		kafka = true
+		kafka = false
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown server type = %s\n", serverType)
 		os.Exit(-1)
