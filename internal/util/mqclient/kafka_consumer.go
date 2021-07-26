@@ -17,16 +17,16 @@ type kafkaConsumer struct {
 	hasSeek    bool
 }
 
-func (kc kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
+func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 
 	return nil
 }
-func (kc kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
+func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 
 	return nil
 
 }
-func (kc kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
@@ -63,7 +63,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				err := kc.g.Consume(ctx, topics, handler)
+				err := kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
 					panic(err)
 				}
