@@ -163,8 +163,8 @@ func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
 func NewKmsFactory() Factory {
 	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
-		ReceiveBufSize:    64,
-		KafkaBufSize:      64,
+		ReceiveBufSize:    1024,
+		KafkaBufSize:      1024,
 	}
 	return f
 }

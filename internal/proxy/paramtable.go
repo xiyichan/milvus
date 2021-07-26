@@ -40,6 +40,7 @@ type ParamTable struct {
 	MetaRootPath     string
 	RootCoordAddress string
 	PulsarAddress    string
+	KafkaAddress     string
 	RocksmqPath      string
 
 	ProxyID                    UniqueID
@@ -104,6 +105,15 @@ func (pt *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	pt.PulsarAddress = ret
+}
+
+//new_kafka
+func (pt *ParamTable) initKafkaAddress() {
+	ret, err := pt.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	pt.KafkaAddress = ret
 }
 
 func (pt *ParamTable) initRocksmqPath() {

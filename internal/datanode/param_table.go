@@ -40,6 +40,9 @@ type ParamTable struct {
 	// --- Pulsar ---
 	PulsarAddress string
 
+	// --- Kafka ---
+	KafkaAddress string
+
 	// --- Rocksmq ---
 	RocksmqPath string
 
@@ -90,7 +93,7 @@ func (p *ParamTable) Init() {
 		// === DataNode External Components Configs ===
 		// --- Pulsar ---
 		p.initPulsarAddress()
-
+		p.initKafkaAddress()
 		p.initRocksmqPath()
 
 		// - seg statistics channel -
@@ -151,6 +154,15 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = url
+}
+
+//new_kafka
+func (p *ParamTable) initKafkaAddress() {
+	url, err := p.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	p.KafkaAddress = url
 }
 
 func (p *ParamTable) initRocksmqPath() {

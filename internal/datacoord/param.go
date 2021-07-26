@@ -37,6 +37,9 @@ type ParamTable struct {
 
 	// --- Pulsar ---
 	PulsarAddress string
+	//new_kafka
+	// --- Kafka ---
+	KafkaAddress string
 
 	// --- Rocksmq ---
 	RocksmqPath string
@@ -78,6 +81,7 @@ func (p *ParamTable) Init() {
 		p.initCollectionBinlogSubPath()
 
 		p.initPulsarAddress()
+		p.initKafkaAddress()
 		p.initRocksmqPath()
 
 		p.initSegmentMaxSize()
@@ -109,6 +113,15 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = addr
+}
+
+//new_kafka
+func (p *ParamTable) initKafkaAddress() {
+	addr, err := p.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	p.KafkaAddress = addr
 }
 
 func (p *ParamTable) initRocksmqPath() {
