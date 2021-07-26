@@ -3,7 +3,6 @@ package mqclient
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
@@ -52,7 +51,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	//defer func() { _ = kc.g.Close() }()
 	go func() {
 		for err := range kc.g.Errors() {
-			fmt.Println("ERROR", err)
+			log.Error("ERROR", zap.Error(err))
 		}
 	}()
 
@@ -70,10 +69,14 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				err := kc.g.Consume(ctx, topics, &handler)
+
+				log.Info("kafka start consume")
+				err = kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
+					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
+
 			}
 		}()
 
@@ -95,9 +98,11 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	pom.ResetOffset(expected, "modified_meta")
 	actual, meta := pom.NextOffset()
 	if actual != expected {
+		log.Error("kafka seek err")
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
+		log.Error("kafka seek err")
 		return errors.New("seek error")
 	}
 	err = pom.Close()

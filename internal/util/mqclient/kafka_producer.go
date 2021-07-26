@@ -14,7 +14,7 @@ type kafkaProducer struct {
 }
 
 func (kp *kafkaProducer) Topic() string {
-	return ""
+	return kp.topic
 }
 func (kp *kafkaProducer) Send(ctx context.Context, message *ProducerMessage) error {
 	log.Info("send message topic ", zap.Any("topic", kp.topic))
