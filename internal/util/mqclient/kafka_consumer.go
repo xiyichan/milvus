@@ -32,7 +32,7 @@ func (kc kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sar
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
-		log.Info("kafka groupID", zap.Any("msg", msg))
+		log.Info("receive msg", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
 	return nil
@@ -43,7 +43,11 @@ func (kc *kafkaConsumer) Subscription() string {
 }
 func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	log.Info("kafka groupID", zap.Any("group_id", kc.groupID))
-	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	var err error
+	kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	if err != nil {
+		log.Error("kafka init consumer", zap.Any("err", err))
+	}
 	if kc.msgChannel == nil {
 		kc.msgChannel = make(chan ConsumerMessage)
 		//if !kc.hasSeek {
