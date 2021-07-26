@@ -34,11 +34,6 @@ pulsar:
   port: 6650
   maxMessageSize: 5242880 # 5 * 1024 * 1024 Bytes
 
-kafka:
-  address: 119.3.231.213
-  port: 9092
-
-
 rocksmq:
   path: /var/lib/milvus/rdb_data
 

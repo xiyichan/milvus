@@ -49,7 +49,6 @@ func TestDataSyncService_Start(t *testing.T) {
 	msFactory := msgstream.NewPmsFactory()
 	m := map[string]interface{}{
 		"pulsarAddress":  pulsarURL,
-		"kafkaAddress":   Params.KafkaAddress,
 		"receiveBufSize": 1024,
 		"pulsarBufSize":  1024}
 	err := msFactory.SetParams(m)

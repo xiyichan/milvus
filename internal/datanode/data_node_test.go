@@ -171,7 +171,6 @@ func TestDataNode(t *testing.T) {
 		msFactory := msgstream.NewPmsFactory()
 		m := map[string]interface{}{
 			"pulsarAddress":  Params.PulsarAddress,
-			"kafkaAddress":   Params.KafkaAddress,
 			"receiveBufSize": 1024,
 			"pulsarBufSize":  1024}
 		err = msFactory.SetParams(m)

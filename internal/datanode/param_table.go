@@ -30,7 +30,7 @@ type ParamTable struct {
 	Port                    int
 	FlowGraphMaxQueueLength int32
 	FlowGraphMaxParallelism int32
-	FlushInsertBufferSize   int32
+	FlushInsertBufferSize   int64
 	InsertBinlogRootPath    string
 	StatsBinlogRootPath     string
 	Log                     log.Config
@@ -39,8 +39,6 @@ type ParamTable struct {
 	// === DataNode External Components Configs ===
 	// --- Pulsar ---
 	PulsarAddress string
-	// --- Kafka ---
-	KafkaAddress string
 
 	// --- Rocksmq ---
 	RocksmqPath string
@@ -126,7 +124,7 @@ func (p *ParamTable) initFlowGraphMaxParallelism() {
 
 // ---- flush configs ----
 func (p *ParamTable) initFlushInsertBufferSize() {
-	p.FlushInsertBufferSize = p.ParseInt32("datanode.flush.insertBufSize")
+	p.FlushInsertBufferSize = p.ParseInt64("datanode.flush.insertBufSize")
 }
 
 func (p *ParamTable) initInsertBinlogRootPath() {
@@ -153,14 +151,6 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = url
-}
-
-func (p *ParamTable) initKafkaAddress() {
-	url, err := p.Load("_KafkaAddress")
-	if err != nil {
-		panic(err)
-	}
-	p.KafkaAddress = url
 }
 
 func (p *ParamTable) initRocksmqPath() {
