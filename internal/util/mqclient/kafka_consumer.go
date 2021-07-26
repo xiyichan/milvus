@@ -49,7 +49,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	if err != nil {
 		log.Error("kafka init consumer", zap.Any("err", err))
 	}
-	defer func() { _ = kc.g.Close() }()
+	//defer func() { _ = kc.g.Close() }()
 	go func() {
 		for err := range kc.g.Errors() {
 			fmt.Println("ERROR", err)
