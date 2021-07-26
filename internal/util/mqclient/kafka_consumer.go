@@ -1,11 +1,11 @@
 package mqclient
 
 import (
+	"context"
+	"errors"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
-
-	"context"
 )
 
 type kafkaConsumer struct {
@@ -67,31 +67,33 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 }
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	//TODO:consumerGroup need close
-	//of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
-	//if err != nil {
-	//	return err
-	//}
-	//pom, err := of.ManagePartition(kc.topicName, 0)
-	//if err != nil {
-	//	return err
-	//}
-	//expected := id.(*kafkaID).messageID.Offset
-	//pom.ResetOffset(expected, "modified_meta")
-	//actual, meta := pom.NextOffset()
-	//if actual != expected {
-	//	return errors.New("seek error")
-	//}
-	//if meta != "modified_meta" {
-	//	return errors.New("seek error")
-	//}
-	//err = pom.Close()
-	//if err != nil {
-	//	return err
-	//}
-	//err = of.Close()
-	//if err != nil {
-	//	return err
-	//}
+	kc.g.Close()
+	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
+	if err != nil {
+		return err
+	}
+	pom, err := of.ManagePartition(kc.topicName, 0)
+	if err != nil {
+		return err
+	}
+	expected := id.(*kafkaID).messageID.Offset
+	pom.ResetOffset(expected, "modified_meta")
+	actual, meta := pom.NextOffset()
+	if actual != expected {
+		return errors.New("seek error")
+	}
+	if meta != "modified_meta" {
+		return errors.New("seek error")
+	}
+	err = pom.Close()
+	if err != nil {
+		return err
+	}
+	err = of.Close()
+	if err != nil {
+		return err
+	}
+	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
