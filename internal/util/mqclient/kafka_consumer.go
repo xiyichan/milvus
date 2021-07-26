@@ -32,6 +32,7 @@ func (kc kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sar
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
+		log.Info("kafka groupID", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
 	return nil
