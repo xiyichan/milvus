@@ -3,6 +3,7 @@ package mqclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
@@ -48,6 +49,13 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	if err != nil {
 		log.Error("kafka init consumer", zap.Any("err", err))
 	}
+	defer func() { _ = kc.g.Close() }()
+	go func() {
+		for err := range kc.g.Errors() {
+			fmt.Println("ERROR", err)
+		}
+	}()
+
 	if kc.msgChannel == nil {
 		kc.msgChannel = make(chan ConsumerMessage)
 		//if !kc.hasSeek {
@@ -56,7 +64,6 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		ctx := context.Background()
 		go func() {
 			for {
-
 				topics := []string{kc.topicName}
 				handler := kafkaConsumer{}
 
