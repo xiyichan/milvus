@@ -49,19 +49,22 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		//	kc.c.SeekByTime(time.Unix(0, 0))
 		//}
 		ctx := context.Background()
-		for {
+		go func() {
+			for {
 
-			topics := []string{kc.topicName}
-			handler := kafkaConsumer{}
+				topics := []string{kc.topicName}
+				handler := kafkaConsumer{}
 
-			// `Consume` should be called inside an infinite loop, when a
-			// server-side rebalance happens, the consumer session will need to be
-			// recreated to get the new claims
-			err := kc.g.Consume(ctx, topics, handler)
-			if err != nil {
-				panic(err)
+				// `Consume` should be called inside an infinite loop, when a
+				// server-side rebalance happens, the consumer session will need to be
+				// recreated to get the new claims
+				err := kc.g.Consume(ctx, topics, handler)
+				if err != nil {
+					panic(err)
+				}
 			}
-		}
+		}()
+
 	}
 	return kc.msgChannel
 }
