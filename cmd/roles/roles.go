@@ -40,8 +40,8 @@ import (
 
 func newMsgFactory(localMsg bool, rocksmqPath string) msgstream.Factory {
 	if localMsg {
-		//return msgstream.NewRmsFactory(rocksmqPath)
-		return msgstream.NewKmsFactory()
+		return msgstream.NewRmsFactory(rocksmqPath)
+		//return msgstream.NewKmsFactory()
 	}
 	return msgstream.NewPmsFactory()
 }
