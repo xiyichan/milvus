@@ -31,6 +31,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
 	kc.lock.Lock()
+	log.Info("topic", zap.Any("t", claim.Topic()))
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
