@@ -44,12 +44,12 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
-	group, err := sarama.NewConsumerGroupFromClient(options.Topic, kc.client)
+	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, kc.client)
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
 		panic(err)
 	}
-	defer func() { _ = group.Close() }()
+	//defer func() { _ = group.Close() }()
 
 	// Track errors
 	go func() {
