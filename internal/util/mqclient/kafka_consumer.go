@@ -30,7 +30,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 }
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
-	kc.lock.Lock()
+
 	log.Info("topic", zap.Any("t", claim.Topic()))
 	log.Info("msg", zap.Any("m", claim.Messages()))
 	for msg := range claim.Messages() {
@@ -40,7 +40,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		log.Info("receive msg", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
-	kc.lock.Unlock()
+
 	return nil
 }
 
@@ -77,12 +77,13 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-
+				kc.lock.Lock()
 				err = kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
+				kc.lock.Unlock()
 
 			}
 		}()
