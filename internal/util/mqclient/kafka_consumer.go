@@ -47,6 +47,8 @@ func (kc *kafkaConsumer) Subscription() string {
 }
 func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	log.Info("kafka groupID", zap.Any("group_id", kc.groupID))
+	topic, _ := kc.c.Topics()
+	log.Info("kc ", zap.Any("topic", topic))
 	var err error
 	kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	if err != nil {
