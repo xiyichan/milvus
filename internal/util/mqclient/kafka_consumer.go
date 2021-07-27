@@ -2,6 +2,7 @@ package mqclient
 
 import (
 	"context"
+	"errors"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
@@ -66,6 +67,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		ctx := context.Background()
 		go func() {
 			log.Info("kafka start consume")
+			kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
 				topics := []string{kc.topicName}
 				handler := kafkaConsumer{}
@@ -89,35 +91,35 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
-	//	kc.g.Close()
-	//of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
-	//if err != nil {
-	//	return err
-	//}
-	//pom, err := of.ManagePartition(kc.topicName, 0)
-	//if err != nil {
-	//	return err
-	//}
-	//expected := id.(*kafkaID).messageID.Offset
-	//pom.ResetOffset(expected, "modified_meta")
-	//actual, meta := pom.NextOffset()
-	//if actual != expected {
-	//	log.Error("kafka seek err")
-	//	return errors.New("seek error")
-	//}
-	//if meta != "modified_meta" {
-	//	log.Error("kafka seek err")
-	//	return errors.New("seek error")
-	//}
-	//err = pom.Close()
-	//if err != nil {
-	//	return err
-	//}
-	//err = of.Close()
-	//if err != nil {
-	//	return err
-	//}
-	//	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	kc.g.Close()
+	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
+	if err != nil {
+		return err
+	}
+	pom, err := of.ManagePartition(kc.topicName, 0)
+	if err != nil {
+		return err
+	}
+	expected := id.(*kafkaID).messageID.Offset
+	pom.ResetOffset(expected, "modified_meta")
+	actual, meta := pom.NextOffset()
+	if actual != expected {
+		log.Error("kafka seek err")
+		return errors.New("seek error")
+	}
+	if meta != "modified_meta" {
+		log.Error("kafka seek err")
+		return errors.New("seek error")
+	}
+	err = pom.Close()
+	if err != nil {
+		return err
+	}
+	err = of.Close()
+	if err != nil {
+		return err
+	}
+	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	kc.lock.Unlock()
 	return nil
 }
