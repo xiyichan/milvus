@@ -32,7 +32,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 	log.Info("consumer claim start")
 
 	log.Info("topic", zap.Any("t", claim.Topic()))
-	log.Info("msg", zap.Any("m", claim.Messages()))
+	log.Info("message length", zap.Any("l", len(claim.Messages())))
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
