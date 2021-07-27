@@ -82,7 +82,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
-					panic(err)
+					//panic(err)
 				}
 				kc.lock.Unlock()
 
