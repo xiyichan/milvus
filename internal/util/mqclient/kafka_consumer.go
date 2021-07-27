@@ -30,7 +30,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 }
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
-	//kc.lock.Lock()
+	kc.lock.Lock()
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
@@ -38,7 +38,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		log.Info("receive msg", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 
@@ -90,7 +90,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 }
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	//TODO:consumerGroup need close
-	//kc.lock.Lock()
+	kc.lock.Lock()
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
@@ -120,7 +120,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
