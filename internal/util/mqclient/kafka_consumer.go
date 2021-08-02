@@ -78,14 +78,14 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				//kc.lock.Lock()
+				kc.lock.Lock()
 				err = kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
 					//panic(err)
 				}
-				//kc.lock.Unlock()
+				kc.lock.Unlock()
 
 			}
 		}()
@@ -96,7 +96,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("kafka start seek")
 	//TODO:consumerGroup need close
-	//kc.lock.Lock()
+	kc.lock.Lock()
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
@@ -126,7 +126,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
