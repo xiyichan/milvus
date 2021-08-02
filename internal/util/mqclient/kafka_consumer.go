@@ -78,14 +78,14 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				//kc.lock.Lock()
+				kc.lock.Lock()
 				err = kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-				//kc.lock.Unlock()
+				kc.lock.Unlock()
 
 			}
 		}()
