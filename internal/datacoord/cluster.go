@@ -217,6 +217,8 @@ func (c *Cluster) handleEvent(node *NodeInfo) {
 	ch := node.GetEventChannel()
 	version := node.Info.GetVersion()
 	for {
+		log.Info("into handleEvent for")
+		log.Info("ch", zap.Any("ch", <-ch))
 		select {
 		case <-ctx.Done():
 			return
