@@ -82,7 +82,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
-					//panic(err)
+					panic(err)
 				}
 				kc.lock.Unlock()
 
@@ -93,6 +93,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	return kc.msgChannel
 }
 func (kc *kafkaConsumer) Seek(id MessageID) error {
+	log.Info("kafka start seek")
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
 	kc.g.Close()
