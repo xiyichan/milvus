@@ -133,5 +133,5 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 
 }
 func (kc *kafkaConsumer) Close() {
-	kc.c.Close()
+	kc.g.Close()
 }
