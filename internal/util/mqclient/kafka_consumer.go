@@ -69,9 +69,9 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		ctx := context.Background()
 		go func() {
 			log.Info("kafka start consume")
-
+			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
-				kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+
 				topics := []string{kc.topicName}
 				//handler := kafkaConsumer{}
 
