@@ -69,22 +69,23 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		ctx := context.Background()
 		go func() {
 			log.Info("kafka start consume")
-			kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+
 			for {
+				kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 				topics := []string{kc.topicName}
 				handler := kafkaConsumer{}
 
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				kc.lock.Lock()
+				//kc.lock.Lock()
 				err = kc.g.Consume(ctx, topics, &handler)
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-				kc.lock.Unlock()
+				//kc.lock.Unlock()
 
 			}
 		}()
