@@ -30,7 +30,9 @@ func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, e
 }
 
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
-	pp, err := sarama.NewSyncProducerFromClient(kc.client)
+	c := kc.client
+	pp, err := sarama.NewSyncProducerFromClient(c)
+
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
 		return nil, err
@@ -38,13 +40,14 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 	if pp == nil {
 		return nil, errors.New("kafka is not ready, producer is nil")
 	}
-	producer := &kafkaProducer{p: pp, c: kc.client, topic: options.Topic}
+	producer := &kafkaProducer{p: pp, c: c, topic: options.Topic}
 	return producer, nil
 }
 
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
-	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, kc.client)
+	c := kc.client
+	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
 		panic(err)
@@ -72,7 +75,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	//	}
 	//}
 
-	consumer := &kafkaConsumer{g: group, c: kc.client, topicName: options.Topic, groupID: options.SubscriptionName}
+	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName}
 	return consumer, nil
 
 }
