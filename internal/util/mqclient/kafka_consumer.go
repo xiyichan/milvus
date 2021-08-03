@@ -20,36 +20,6 @@ type kafkaConsumer struct {
 	hasSeek    bool
 }
 
-type handler struct {
-	channel chan ConsumerMessage
-}
-
-func (h *handler) Setup(sess sarama.ConsumerGroupSession) error {
-
-	return nil
-}
-func (h *handler) Cleanup(sess sarama.ConsumerGroupSession) error {
-
-	return nil
-
-}
-func (h *handler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	log.Info("consumer claim start")
-
-	log.Info("topic", zap.Any("t", claim.Topic()))
-	log.Info("message length", zap.Any("l", len(claim.Messages())))
-	for msg := range claim.Messages() {
-		log.Debug("In range", zap.Any("msg", msg))
-		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
-		h.channel <- &kafkaMessage{msg: msg}
-		sess.MarkMessage(msg, "")
-		log.Info("receive msg", zap.Any("msg", msg))
-		//fmt.Println(string(msg.Value))
-	}
-
-	return nil
-}
-
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 
 	return nil
@@ -88,14 +58,6 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
 				topics := []string{kc.topicName}
-				//handler := kafkaConsumer{}
-				// `Consume` should be called inside an infinite loop, when a
-				// server-side rebalance happens, the consumer session will need to be
-				// recreated to get the new claims
-				// kc.lock.Lock()
-				//h := &handler{
-				//	channel: make(chan ConsumerMessage),
-				//}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				err = kc.g.Consume(ctx, topics, kc)
 				log.Debug("After consume")
@@ -104,15 +66,15 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-				//if len(h.channel) > 0 {
-				//	msg := <-h.channel
-				//	kc.msgChannel <- msg
-				//}
-				// kc.lock.Unlock()
 
 			}
 		}()
 
+	}
+	if kc.msgChannel == nil {
+		log.Debug("consume finish error")
+	} else {
+		log.Debug("consume finish success")
 	}
 	return kc.msgChannel
 }
