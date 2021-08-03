@@ -47,7 +47,12 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
 	c := kc.client
-	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
+	config := sarama.NewConfig()
+	config.Version = sarama.V2_8_0_0
+
+	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
+	group, err := sarama.NewConsumerGroup([]string{"119.3.231.213"}, options.SubscriptionName, config)
+
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
 		panic(err)
