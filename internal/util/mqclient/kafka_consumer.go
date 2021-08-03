@@ -44,6 +44,36 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 	return nil
 }
 
+type handler struct {
+	channel chan ConsumerMessage
+}
+
+func (h *handler) Setup(sess sarama.ConsumerGroupSession) error {
+
+	return nil
+}
+func (h *handler) Cleanup(sess sarama.ConsumerGroupSession) error {
+
+	return nil
+
+}
+func (h *handler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	log.Info("consumer claim start")
+
+	log.Info("topic", zap.Any("t", claim.Topic()))
+	log.Info("message length", zap.Any("l", len(claim.Messages())))
+	for msg := range claim.Messages() {
+		log.Debug("In range", zap.Any("msg", msg))
+		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
+		h.channel <- &kafkaMessage{msg: msg}
+		sess.MarkMessage(msg, "")
+		log.Info("receive msg", zap.Any("msg", msg))
+		//fmt.Println(string(msg.Value))
+	}
+
+	return nil
+}
+
 func (kc *kafkaConsumer) Subscription() string {
 	return kc.groupID
 }
@@ -78,14 +108,29 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				// `Consume` should be called inside an infinite loop, when a
 				// server-side rebalance happens, the consumer session will need to be
 				// recreated to get the new claims
-				kc.lock.Lock()
-				err = kc.g.Consume(ctx, topics, kc)
+				//kc.lock.Lock()
+				//err = kc.g.Consume(ctx, topics, kc)
+				//if err != nil {
+				//	log.Info("err topic", zap.Any("topic", topics))
+				//	log.Error("kafka consume err", zap.Error(err))
+				//	panic(err)
+				//}
+				//kc.lock.Unlock()
+				h := &handler{
+					channel: make(chan ConsumerMessage),
+				}
+				log.Debug("Before consume", zap.Any("topic", topics))
+				err = kc.g.Consume(ctx, topics, h)
+				log.Debug("After consume")
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-				kc.lock.Unlock()
+				if len(h.channel) > 0 {
+					msg := <-h.channel
+					kc.msgChannel <- msg
+				}
 
 			}
 		}()
@@ -96,7 +141,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("kafka start seek")
 	//TODO:consumerGroup need close
-	kc.lock.Lock()
+	//kc.lock.Lock()
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
@@ -126,7 +171,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-	kc.lock.Unlock()
+	//kc.lock.Unlock()
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
