@@ -32,6 +32,7 @@ func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, e
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
 	c := kc.client
 	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
 	config.Version = sarama.V2_8_0_0
 	pp, err := sarama.NewSyncProducer([]string{"119.3.231.213:9092"}, config)
 
