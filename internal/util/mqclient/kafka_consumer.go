@@ -115,7 +115,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
-
+	log.Info("ack msg", zap.Any("msg", message.Payload()))
 }
 func (kc *kafkaConsumer) Close() {
 	kc.g.Close()
