@@ -82,7 +82,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("kafka start seek")
 	//TODO:consumerGroup need close
 	// kc.lock.Lock()
-	// kc.g.Close()
+	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	if err != nil {
 		return err
 	}
-	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	//kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	// kc.lock.Unlock()
 	return nil
 }
