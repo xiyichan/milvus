@@ -12,9 +12,7 @@
 package querynode
 
 /*
-
 #cgo CFLAGS: -I${SRCDIR}/../core/output/include
-
 #cgo LDFLAGS: -L${SRCDIR}/../core/output/lib -lmilvus_segcore -Wl,-rpath=${SRCDIR}/../core/output/lib
 
 #include "segcore/collection_c.h"
@@ -23,6 +21,8 @@ package querynode
 */
 import "C"
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
@@ -35,6 +35,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 )
 
@@ -59,6 +60,7 @@ func newVectorFieldInfo(fieldBinlog *datapb.FieldBinlog) *VectorFieldInfo {
 
 //--------------------------------------------------------------------------------------
 type Segment struct {
+	segPtrMu   sync.RWMutex // guards segmentPtr
 	segmentPtr C.CSegmentInterface
 
 	segmentID    UniqueID
@@ -169,14 +171,14 @@ func newSegment(collection *Collection, segmentID int64, partitionID UniqueID, c
 	var segmentPtr C.CSegmentInterface
 	switch segType {
 	case segmentTypeInvalid:
-		log.Error("illegal segment type when create segment")
+		log.Warn("illegal segment type when create segment")
 		return nil
 	case segmentTypeSealed:
 		segmentPtr = C.NewSegment(collection.collectionPtr, C.ulong(segmentID), C.Sealed)
 	case segmentTypeGrowing:
 		segmentPtr = C.NewSegment(collection.collectionPtr, C.ulong(segmentID), C.Growing)
 	default:
-		log.Error("illegal segment type when create segment")
+		log.Warn("illegal segment type when create segment")
 		return nil
 	}
 
@@ -202,6 +204,12 @@ func deleteSegment(segment *Segment) {
 		void
 		deleteSegment(CSegmentInterface segment);
 	*/
+	if segment.segmentPtr == nil {
+		return
+	}
+
+	segment.segPtrMu.Lock()
+	defer segment.segPtrMu.Unlock()
 	cPtr := segment.segmentPtr
 	C.DeleteSegment(cPtr)
 	segment.segmentPtr = nil
@@ -216,8 +224,8 @@ func (s *Segment) getRowCount() int64 {
 		long int
 		getRowCount(CSegmentInterface c_segment);
 	*/
-	//segmentPtrIsNil := s.segmentPtr == nil
-	//log.Debug("QueryNode::Segment::getRowCount", zap.Any("segmentPtrIsNil", segmentPtrIsNil))
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -231,6 +239,8 @@ func (s *Segment) getDeletedCount() int64 {
 		long int
 		getDeletedCount(CSegmentInterface c_segment);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -243,6 +253,8 @@ func (s *Segment) getMemSize() int64 {
 		long int
 		GetMemoryUsageInBytes(CSegmentInterface c_segment);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -263,6 +275,8 @@ func (s *Segment) search(plan *SearchPlan,
 			long int* result_ids,
 			float* result_distances);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
@@ -289,6 +303,11 @@ func (s *Segment) search(plan *SearchPlan,
 }
 
 func (s *Segment) getEntityByIds(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock()
+	if s.segmentPtr == nil {
+		return nil, errors.New("null seg core pointer")
+	}
 	resProto := C.GetEntityByIds(s.segmentPtr, plan.cRetrievePlan, C.uint64_t(plan.Timestamp))
 	result := new(segcorepb.RetrieveResults)
 	err := HandleCProtoResult(&resProto, result)
@@ -298,21 +317,75 @@ func (s *Segment) getEntityByIds(plan *RetrievePlan) (*segcorepb.RetrieveResults
 	return result, nil
 }
 
-func (s *Segment) fillTargetEntry(plan *SearchPlan, result *SearchResult) error {
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
+func (s *Segment) fillVectorFieldsData(collectionID UniqueID,
+	vcm storage.ChunkManager, result *segcorepb.RetrieveResults) error {
+
+	for _, fieldData := range result.FieldsData {
+		log.Debug("FillVectorFieldData for fieldID", zap.Any("fieldID", fieldData.FieldId))
+		// If the vector field doesn't have index. Vector data is in memory for
+		// brute force search. No need to download data from remote.
+		_, ok := s.indexInfos[fieldData.FieldId]
+		if !ok {
+			log.Debug("FillVectorFieldData field doesn't have index",
+				zap.Any("field", fieldData.FieldId))
+			continue
+		}
+
+		vecFieldInfo, err := s.getVectorFieldInfo(fieldData.FieldId)
+		if err != nil {
+			continue
+		}
+		log.Debug("FillVectorFieldData", zap.Any("fieldId", fieldData.FieldId))
+
+		dim := fieldData.GetVectors().GetDim()
+		log.Debug("FillVectorFieldData", zap.Int64("dim", dim), zap.Any("datatype", fieldData.Type))
+
+		for i, offset := range result.Offset {
+			var vecPath string
+			for index, idBinlogRowSize := range s.idBinlogRowSizes {
+				if offset < idBinlogRowSize {
+					vecPath = vecFieldInfo.fieldBinlog.Binlogs[index]
+					break
+				} else {
+					offset -= idBinlogRowSize
+				}
+			}
+			log.Debug("FillVectorFieldData", zap.Any("path", vecPath))
+
+			switch fieldData.Type {
+			case schemapb.DataType_BinaryVector:
+				rowBytes := dim / 8
+				x := fieldData.GetVectors().GetData().(*schemapb.VectorField_BinaryVector)
+				content := make([]byte, rowBytes)
+				_, err := vcm.ReadAt(vecPath, content, offset*rowBytes)
+				if err != nil {
+					return err
+				}
+				log.Debug("FillVectorFieldData", zap.Any("binaryVectorResult", content))
+
+				resultLen := dim / 8
+				copy(x.BinaryVector[i*int(resultLen):(i+1)*int(resultLen)], content)
+			case schemapb.DataType_FloatVector:
+				x := fieldData.GetVectors().GetData().(*schemapb.VectorField_FloatVector)
+				rowBytes := dim * 4
+				content := make([]byte, rowBytes)
+				_, err := vcm.ReadAt(vecPath, content, offset*rowBytes)
+				if err != nil {
+					return err
+				}
+				floatResult := make([]float32, dim)
+				buf := bytes.NewReader(content)
+				err = binary.Read(buf, binary.LittleEndian, &floatResult)
+				if err != nil {
+					return err
+				}
+				log.Debug("FillVectorFieldData", zap.Any("floatVectorResult", floatResult))
+
+				resultLen := dim
+				copy(x.FloatVector.Data[i*int(resultLen):(i+1)*int(resultLen)], floatResult)
+			}
+		}
 	}
-
-	log.Debug("segment fill target entry, ", zap.Int64("segment ID = ", s.segmentID))
-	var status = C.FillTargetEntry(s.segmentPtr, plan.cSearchPlan, result.cSearchResult)
-	errorCode := status.error_code
-
-	if errorCode != 0 {
-		errorMsg := C.GoString(status.error_msg)
-		defer C.free(unsafe.Pointer(status.error_msg))
-		return errors.New("FillTargetEntry failed, C runtime error detected, error code = " + strconv.Itoa(int(errorCode)) + ", error msg = " + errorMsg)
-	}
-
 	return nil
 }
 
@@ -465,6 +538,8 @@ func (s *Segment) segmentPreInsert(numOfRecords int) (int64, error) {
 		long int
 		PreInsert(CSegmentInterface c_segment, long int size);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentType != segmentTypeGrowing {
 		return 0, nil
 	}
@@ -487,6 +562,8 @@ func (s *Segment) segmentPreDelete(numOfRecords int) int64 {
 		long int
 		PreDelete(CSegmentInterface c_segment, long int size);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	var offset = C.PreDelete(s.segmentPtr, C.long(int64(numOfRecords)))
 
 	return int64(offset)
@@ -504,10 +581,12 @@ func (s *Segment) segmentInsert(offset int64, entityIDs *[]UniqueID, timestamps 
 		           int sizeof_per_row,
 		           signed long int count);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentType != segmentTypeGrowing {
 		return nil
 	}
-	log.Debug("QueryNode::Segment::segmentInsert:", zap.Any("s.sgmentPtr", s.segmentPtr))
+	log.Debug("QueryNode::Segment::segmentInsert:", zap.Any("s.segmentPtr", s.segmentPtr))
 
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
@@ -565,6 +644,8 @@ func (s *Segment) segmentDelete(offset int64, entityIDs *[]UniqueID, timestamps 
 		           const long* primary_keys,
 		           const unsigned long* timestamps);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -592,6 +673,8 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int, data interfa
 		CStatus
 		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -685,6 +768,8 @@ func (s *Segment) dropFieldData(fieldID int64) error {
 		CStatus
 		DropFieldData(CSegmentInterface c_segment, int64_t field_id);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -729,6 +814,8 @@ func (s *Segment) updateSegmentIndex(bytesIndex [][]byte, fieldID UniqueID) erro
 		return err
 	}
 
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -757,6 +844,8 @@ func (s *Segment) dropSegmentIndex(fieldID int64) error {
 		CStatus
 		DropSealedSegmentIndex(CSegmentInterface c_segment, int64_t field_id);
 	*/
+	s.segPtrMu.RLock()
+	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}

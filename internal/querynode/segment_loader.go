@@ -70,70 +70,72 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, onSer
 		return nil
 	}
 
+	newSegments := make([]*Segment, 0)
+	segmentGC := func() {
+		for _, s := range newSegments {
+			deleteSegment(s)
+		}
+	}
+	setSegments := func() {
+		for _, s := range newSegments {
+			err := loader.historicalReplica.setSegment(s)
+			if err != nil {
+				log.Warn(err.Error())
+				deleteSegment(s)
+			}
+		}
+	}
+
 	// start to load
 	for _, info := range req.Infos {
 		segmentID := info.SegmentID
 		partitionID := info.PartitionID
 		collectionID := info.CollectionID
 
-		// init replica
-		hasCollectionInHistorical := loader.historicalReplica.hasCollection(collectionID)
-		hasPartitionInHistorical := loader.historicalReplica.hasPartition(partitionID)
-		if !hasCollectionInHistorical {
-			err := loader.historicalReplica.addCollection(collectionID, req.Schema)
-			if err != nil {
-				return err
-			}
-		}
-		if !hasPartitionInHistorical {
-			err := loader.historicalReplica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
-			}
-		}
-
 		collection, err := loader.historicalReplica.getCollectionByID(collectionID)
 		if err != nil {
 			log.Warn(err.Error())
-			continue
+			segmentGC()
+			return err
 		}
 		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, onService)
 		err = loader.loadSegmentInternal(collectionID, segment, info)
 		if err != nil {
 			deleteSegment(segment)
-			log.Error(err.Error())
-			continue
-		}
-		err = loader.historicalReplica.setSegment(segment)
-		if err != nil {
-			deleteSegment(segment)
-			log.Error(err.Error())
-			continue
+			log.Warn(err.Error())
+			segmentGC()
+			return err
 		}
 		if onService {
 			key := fmt.Sprintf("%s/%d", queryCoordSegmentMetaPrefix, segmentID)
 			value, err := loader.etcdKV.Load(key)
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when load segment info from etcd", zap.Any("error", err.Error()))
-				continue
+				log.Warn("error when load segment info from etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 			segmentInfo := &querypb.SegmentInfo{}
 			err = proto.UnmarshalText(value, segmentInfo)
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when unmarshal segment info from etcd", zap.Any("error", err.Error()))
-				continue
+				log.Warn("error when unmarshal segment info from etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 			segmentInfo.SegmentState = querypb.SegmentState_sealed
 			newKey := fmt.Sprintf("%s/%d", queryNodeSegmentMetaPrefix, segmentID)
 			err = loader.etcdKV.Save(newKey, proto.MarshalTextString(segmentInfo))
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when update segment info to etcd", zap.Any("error", err.Error()))
+				log.Warn("error when update segment info to etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 		}
+		newSegments = append(newSegments, segment)
 	}
+	setSegments()
 
 	// sendQueryNodeStats
 	return loader.indexLoader.sendQueryNodeStats()
@@ -220,7 +222,7 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 	defer func() {
 		err := iCodec.Close()
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 		}
 	}()
 	blobs := make([]*storage.Blob, 0)
@@ -247,7 +249,7 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 
 	_, _, insertData, err := iCodec.Deserialize(blobs)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return err
 	}
 

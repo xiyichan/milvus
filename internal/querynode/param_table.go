@@ -121,7 +121,7 @@ func (p *ParamTable) Init() {
 func (p *ParamTable) initQueryTimeTickChannelName() {
 	ch, err := p.Load("msgChannel.chanNamePrefix.queryTimeTick")
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 	}
 	p.QueryTimeTickChannelName = ch
 }
@@ -251,7 +251,7 @@ func (p *ParamTable) initGracefulTime() {
 func (p *ParamTable) initMsgChannelSubName() {
 	namePrefix, err := p.Load("msgChannel.subNamePrefix.queryNodeSubNamePrefix")
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 	}
 	subName := namePrefix + "-" + strconv.FormatInt(p.QueryNodeID, 10)
 	p.MsgChannelSubName = subName

@@ -29,6 +29,8 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 )
 
+const segmentMaxLifetime = 24 * time.Hour
+
 // Manager manage segment related operations.
 type Manager interface {
 	// AllocSegment allocate rows and record the allocation.
@@ -133,12 +135,11 @@ func defaultAlocatePolicy() AllocatePolicy {
 	return AllocatePolicyV1
 }
 
-func defaultSealPolicy() sealPolicy {
-	return sealPolicyV1
-}
-
-func defaultSegmentSealPolicy() segmentSealPolicy {
-	return getSegmentCapacityPolicy(Params.SegmentSealProportion)
+func defaultSegmentSealPolicy() []segmentSealPolicy {
+	return []segmentSealPolicy{
+		sealByLifetimePolicy(segmentMaxLifetime),
+		getSegmentCapacityPolicy(Params.SegmentSealProportion),
+	}
 }
 
 func defaultFlushPolicy() flushPolicy {
@@ -154,8 +155,8 @@ func newSegmentManager(meta *meta, allocator allocator, opts ...allocOption) *Se
 		segments:            make([]UniqueID, 0),
 		estimatePolicy:      defaultCalUpperLimitPolicy(),
 		allocPolicy:         defaultAlocatePolicy(),
-		segmentSealPolicies: []segmentSealPolicy{defaultSegmentSealPolicy()}, // default only segment size policy
-		channelSealPolicies: []channelSealPolicy{},                           // no default channel seal policy
+		segmentSealPolicies: defaultSegmentSealPolicy(), // default only segment size policy
+		channelSealPolicies: []channelSealPolicy{},      // no default channel seal policy
 		flushPolicy:         defaultFlushPolicy(),
 		allocPool: sync.Pool{
 			New: func() interface{} {
@@ -376,14 +377,14 @@ func (s *SegmentManager) GetFlushableSegments(ctx context.Context, channel strin
 	defer s.mu.Unlock()
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
-	if err := s.tryToSealSegment(t); err != nil {
+	if err := s.tryToSealSegment(t, channel); err != nil {
 		return nil, err
 	}
 
 	ret := make([]UniqueID, 0, len(s.segments))
 	for _, id := range s.segments {
 		info := s.meta.GetSegment(id)
-		if info == nil {
+		if info == nil || info.InsertChannel != channel {
 			continue
 		}
 		if s.flushPolicy(info, t) {
@@ -400,28 +401,29 @@ func (s *SegmentManager) ExpireAllocations(channel string, ts Timestamp) error {
 	defer s.mu.Unlock()
 	for _, id := range s.segments {
 		segment := s.meta.GetSegment(id)
-		if segment == nil {
+		if segment == nil || segment.InsertChannel != channel {
 			continue
 		}
+		allocations := make([]*Allocation, 0, len(segment.allocations))
 		for i := 0; i < len(segment.allocations); i++ {
 			if segment.allocations[i].ExpireTime <= ts {
 				a := segment.allocations[i]
-				segment.allocations = append(segment.allocations[:i], segment.allocations[i+1:]...)
 				s.putAllocation(a)
+			} else {
+				allocations = append(allocations, segment.allocations[i])
 			}
 		}
-		s.meta.SetAllocations(segment.GetID(), segment.allocations)
+		s.meta.SetAllocations(segment.GetID(), allocations)
 	}
 	return nil
 }
 
 // tryToSealSegment applies segment & channel seal policies
-func (s *SegmentManager) tryToSealSegment(ts Timestamp) error {
+func (s *SegmentManager) tryToSealSegment(ts Timestamp, channel string) error {
 	channelInfo := make(map[string][]*SegmentInfo)
 	for _, id := range s.segments {
 		info := s.meta.GetSegment(id)
-		if info == nil {
-			log.Warn("Failed to get seg info from meta", zap.Int64("id", id))
+		if info == nil || info.InsertChannel != channel {
 			continue
 		}
 		channelInfo[info.InsertChannel] = append(channelInfo[info.InsertChannel], info)

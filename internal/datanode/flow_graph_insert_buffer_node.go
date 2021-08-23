@@ -152,6 +152,8 @@ func (ibNode *insertBufferNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 
 	if iMsg == nil {
+		ibNode.timeTickStream.Close()
+		ibNode.segmentStatisticsStream.Close()
 		return []Msg{}
 	}
 
@@ -178,7 +180,7 @@ func (ibNode *insertBufferNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		collID := msg.GetCollectionID()
 		partitionID := msg.GetPartitionID()
 
-		if !ibNode.replica.hasSegment(currentSegID) {
+		if !ibNode.replica.hasSegment(currentSegID, true) {
 			err := ibNode.replica.addNewSegment(currentSegID, collID, partitionID, msg.GetChannelID(),
 				iMsg.startPositions[0], iMsg.endPositions[0])
 			if err != nil {
@@ -557,7 +559,7 @@ func (ibNode *insertBufferNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 				flushed:    true,
 			})
 			ibNode.replica.segmentFlushed(currentSegID)
-			fmsg.dmlFlushedCh <- []*datapb.ID2PathList{{ID: currentSegID, Paths: []string{}}}
+			fmsg.dmlFlushedCh <- []*datapb.FieldBinlog{{FieldID: currentSegID, Binlogs: []string{}}}
 		} else { //insertBuffer(not empty) -> binLogs -> minIO/S3
 			log.Debug(".. Buffer not empty, flushing ..")
 			finishCh := make(chan segmentFlushUnit, 1)
@@ -569,7 +571,7 @@ func (ibNode *insertBufferNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 				log.Debug(".. Clearing flush Buffer ..")
 				ibNode.flushMap.Delete(currentSegID)
 				close(finishCh)
-				fmsg.dmlFlushedCh <- []*datapb.ID2PathList{{ID: currentSegID, Paths: nil}}
+				fmsg.dmlFlushedCh <- []*datapb.FieldBinlog{{FieldID: currentSegID, Binlogs: nil}}
 			}
 
 			collID, partitionID, err := ibNode.getCollectionandPartitionIDbySegID(currentSegID)
@@ -601,7 +603,7 @@ func (ibNode *insertBufferNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 					ibNode.replica.segmentFlushed(fu.segID)
 				}
 			}
-			fmsg.dmlFlushedCh <- []*datapb.ID2PathList{{ID: currentSegID, Paths: []string{}}}
+			fmsg.dmlFlushedCh <- []*datapb.FieldBinlog{{FieldID: currentSegID, Binlogs: []string{}}}
 		}
 
 	default:
@@ -789,7 +791,7 @@ func (ibNode *insertBufferNode) updateSegStatistics(segIDs []UniqueID) error {
 }
 
 func (ibNode *insertBufferNode) getCollMetabySegID(segmentID UniqueID, ts Timestamp) (meta *etcdpb.CollectionMeta, err error) {
-	if !ibNode.replica.hasSegment(segmentID) {
+	if !ibNode.replica.hasSegment(segmentID, true) {
 		return nil, fmt.Errorf("No such segment %d in the replica", segmentID)
 	}
 

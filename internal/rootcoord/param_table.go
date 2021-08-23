@@ -29,15 +29,17 @@ type ParamTable struct {
 	Address string
 	Port    int
 
-	PulsarAddress     string
-	KafkaAddress      string
-	RocksmqPath       string
-	EtcdEndpoints     []string
-	MetaRootPath      string
-	KvRootPath        string
-	MsgChannelSubName string
-	TimeTickChannel   string
-	StatisticsChannel string
+	PulsarAddress                 string
+	KafkaAddress                  string
+	RocksmqPath                   string
+	RocksmqRetentionSizeInMinutes int64
+	RocksmqRetentionSizeInMB      int64
+	EtcdEndpoints                 []string
+	MetaRootPath                  string
+	KvRootPath                    string
+	MsgChannelSubName             string
+	TimeTickChannel               string
+	StatisticsChannel             string
 
 	MaxPartitionNum             int64
 	DefaultPartitionName        string
@@ -62,7 +64,6 @@ func (p *ParamTable) Init() {
 		}
 
 		p.initPulsarAddress()
-		p.initKafkaAddress()
 		p.initRocksmqPath()
 		p.initEtcdEndpoints()
 		p.initMetaRootPath()
@@ -91,15 +92,6 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = addr
-}
-
-//new_kafka
-func (p *ParamTable) initKafkaAddress() {
-	addr, err := p.Load("_KafkaAddress")
-	if err != nil {
-		panic(err)
-	}
-	p.KafkaAddress = addr
 }
 
 func (p *ParamTable) initRocksmqPath() {

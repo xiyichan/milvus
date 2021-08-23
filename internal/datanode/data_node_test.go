@@ -13,15 +13,20 @@ package datanode
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"math/rand"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -30,6 +35,7 @@ import (
 )
 
 func TestMain(t *testing.M) {
+	rand.Seed(time.Now().Unix())
 	Params.InitAlias("datanode-alias-1")
 	Params.Init()
 	refreshChannelNames()
@@ -204,12 +210,13 @@ func TestDataNode(t *testing.T) {
 	})
 
 	t.Run("Test BackGroundGC", func(te *testing.T) {
+		te.Skipf("issue #6574")
 		ctx, cancel := context.WithCancel(context.Background())
 		node := newIDLEDataNodeMock(ctx)
 
 		collIDCh := make(chan UniqueID)
-		go node.BackGroundGC(collIDCh)
 		node.clearSignal = collIDCh
+		go node.BackGroundGC(collIDCh)
 
 		testDataSyncs := []struct {
 			collID        UniqueID
@@ -225,11 +232,6 @@ func TestDataNode(t *testing.T) {
 		for i, t := range testDataSyncs {
 			if i <= 2 {
 				node.NewDataSyncService(&datapb.VchannelInfo{CollectionID: t.collID, ChannelName: t.dmChannelName})
-
-				msFactory := msgstream.NewPmsFactory()
-				insertStream, _ := msFactory.NewMsgStream(ctx)
-				var insertMsgStream msgstream.MsgStream = insertStream
-				insertMsgStream.Start()
 			}
 
 			collIDCh <- t.collID
@@ -318,4 +320,72 @@ func TestDataNode(t *testing.T) {
 	cancel()
 	<-node.ctx.Done()
 	node.Stop()
+}
+
+func TestWatchChannel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	node := newIDLEDataNodeMock(ctx)
+	node.Init()
+	node.Start()
+	node.Register()
+
+	defer cancel()
+
+	t.Run("test watch channel", func(t *testing.T) {
+
+		kv, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
+		require.NoError(t, err)
+		ch := fmt.Sprintf("datanode-etcd-test-channel_%d", rand.Int31())
+		path := fmt.Sprintf("channel/%d/%s", node.NodeID, ch)
+		c := make(chan struct{})
+		go func() {
+			ec := kv.WatchWithPrefix(fmt.Sprintf("channel/%d", node.NodeID))
+			c <- struct{}{}
+			cnt := 0
+			for {
+				evt := <-ec
+				for _, event := range evt.Events {
+					if strings.Contains(string(event.Kv.Key), ch) {
+						cnt++
+					}
+				}
+				if cnt >= 2 {
+					break
+				}
+			}
+			c <- struct{}{}
+		}()
+		// wait for check goroutine start Watch
+		<-c
+
+		vchan := &datapb.VchannelInfo{
+			CollectionID:      1,
+			ChannelName:       ch,
+			UnflushedSegments: []*datapb.SegmentInfo{},
+		}
+		info := &datapb.ChannelWatchInfo{
+			State: datapb.ChannelWatchState_Uncomplete,
+			Vchan: vchan,
+		}
+		val, err := proto.Marshal(info)
+		assert.Nil(t, err)
+		err = kv.Save(path, string(val))
+		assert.Nil(t, err)
+
+		// wait for check goroutine received 2 events
+		<-c
+		node.chanMut.RLock()
+		_, has := node.vchan2SyncService[ch]
+		node.chanMut.RUnlock()
+		assert.True(t, has)
+
+		kv.RemoveWithPrefix(fmt.Sprintf("channel/%d", node.NodeID))
+		//TODO there is not way to sync Release done, use sleep for now
+		time.Sleep(100 * time.Millisecond)
+
+		node.chanMut.RLock()
+		_, has = node.vchan2SyncService[ch]
+		node.chanMut.RUnlock()
+		assert.False(t, has)
+	})
 }

@@ -44,20 +44,71 @@ func TestVectorChunkManager(t *testing.T) {
 
 	lcm := NewLocalChunkManager(localPath)
 
-	schema := initSchema()
-	vcm := NewVectorChunkManager(lcm, rcm)
+	meta := initMeta()
+	vcm := NewVectorChunkManager(lcm, rcm, meta, false)
 	assert.NotNil(t, vcm)
 
-	binlogs := initBinlogFile(schema)
+	binlogs := initBinlogFile(meta)
 	assert.NotNil(t, binlogs)
 	for _, binlog := range binlogs {
 		rcm.Write(binlog.Key, binlog.Value)
 	}
-	err = vcm.DownloadVectorFile("108", schema)
+
+	content, err := vcm.Read("108")
+	assert.Nil(t, err)
+	assert.Equal(t, []byte{0, 255}, content)
+
+	content, err = vcm.Read("109")
 	assert.Nil(t, err)
 
-	err = vcm.DownloadVectorFile("109", schema)
+	floatResult := make([]float32, 0)
+	for i := 0; i < len(content)/4; i++ {
+		singleData := typeutil.ByteToFloat32(content[i*4 : i*4+4])
+		floatResult = append(floatResult, singleData)
+	}
+	assert.Equal(t, []float32{0, 1, 2, 3, 4, 5, 6, 7, 0, 111, 222, 333, 444, 555, 777, 666}, floatResult)
+
+	content = make([]byte, 8*4)
+	byteLen, err := vcm.ReadAt("109", content, 8*4)
 	assert.Nil(t, err)
+	assert.Equal(t, 32, byteLen)
+
+	floatResult = make([]float32, 0)
+	for i := 0; i < len(content)/4; i++ {
+		singleData := typeutil.ByteToFloat32(content[i*4 : i*4+4])
+		floatResult = append(floatResult, singleData)
+	}
+	assert.Equal(t, []float32{0, 111, 222, 333, 444, 555, 777, 666}, floatResult)
+
+	os.Remove(path.Join(localPath, "108"))
+	os.Remove(path.Join(localPath, "109"))
+}
+
+func TestVectorChunkManagerWithLocalCache(t *testing.T) {
+	Params.Init()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucketName := "fantastic-tech-test"
+	minIOKV, err := newMinIOKVClient(ctx, bucketName)
+	assert.Nil(t, err)
+	defer minIOKV.RemoveWithPrefix("")
+
+	rcm := NewMinioChunkManager(minIOKV)
+
+	localPath := "/tmp/milvus/data"
+
+	lcm := NewLocalChunkManager(localPath)
+
+	meta := initMeta()
+	vcm := NewVectorChunkManager(lcm, rcm, meta, true)
+	assert.NotNil(t, vcm)
+
+	binlogs := initBinlogFile(meta)
+	assert.NotNil(t, binlogs)
+	for _, binlog := range binlogs {
+		rcm.Write(binlog.Key, binlog.Value)
+	}
 
 	content, err := vcm.Read("108")
 	assert.Nil(t, err)
@@ -107,8 +158,8 @@ func newMinIOKVClient(ctx context.Context, bucketName string) (*miniokv.MinIOKV,
 	return client, err
 }
 
-func initSchema() *etcdpb.CollectionMeta {
-	schema := &etcdpb.CollectionMeta{
+func initMeta() *etcdpb.CollectionMeta {
+	meta := &etcdpb.CollectionMeta{
 		ID:            1,
 		CreateTime:    1,
 		SegmentIDs:    []int64{0, 1},
@@ -156,7 +207,7 @@ func initSchema() *etcdpb.CollectionMeta {
 			},
 		},
 	}
-	return schema
+	return meta
 }
 
 func initBinlogFile(schema *etcdpb.CollectionMeta) []*Blob {
