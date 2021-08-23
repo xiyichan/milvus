@@ -52,7 +52,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	c := kc.client
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
-
+	config.Producer.Return.Successes = true
 	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
 	group, err := sarama.NewConsumerGroup([]string{"119.3.231.213:9092"}, options.SubscriptionName, config)
 
