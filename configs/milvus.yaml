@@ -35,7 +35,7 @@ pulsar:
   maxMessageSize: 5242880 # 5 * 1024 * 1024 Bytes
 
 kafka:
-  address: 119.3.231.213
+  address: 47.106.76.166
   port: 9092
 
 rocksmq:
