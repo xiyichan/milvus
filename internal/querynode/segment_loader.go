@@ -25,6 +25,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/rootcoord"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
@@ -69,70 +70,72 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, onSer
 		return nil
 	}
 
+	newSegments := make([]*Segment, 0)
+	segmentGC := func() {
+		for _, s := range newSegments {
+			deleteSegment(s)
+		}
+	}
+	setSegments := func() {
+		for _, s := range newSegments {
+			err := loader.historicalReplica.setSegment(s)
+			if err != nil {
+				log.Warn(err.Error())
+				deleteSegment(s)
+			}
+		}
+	}
+
 	// start to load
 	for _, info := range req.Infos {
 		segmentID := info.SegmentID
 		partitionID := info.PartitionID
 		collectionID := info.CollectionID
 
-		// init replica
-		hasCollectionInHistorical := loader.historicalReplica.hasCollection(collectionID)
-		hasPartitionInHistorical := loader.historicalReplica.hasPartition(partitionID)
-		if !hasCollectionInHistorical {
-			err := loader.historicalReplica.addCollection(collectionID, req.Schema)
-			if err != nil {
-				return err
-			}
-		}
-		if !hasPartitionInHistorical {
-			err := loader.historicalReplica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
-			}
-		}
-
 		collection, err := loader.historicalReplica.getCollectionByID(collectionID)
 		if err != nil {
 			log.Warn(err.Error())
-			continue
+			segmentGC()
+			return err
 		}
 		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, onService)
 		err = loader.loadSegmentInternal(collectionID, segment, info)
 		if err != nil {
 			deleteSegment(segment)
-			log.Error(err.Error())
-			continue
-		}
-		err = loader.historicalReplica.setSegment(segment)
-		if err != nil {
-			deleteSegment(segment)
-			log.Error(err.Error())
-			continue
+			log.Warn(err.Error())
+			segmentGC()
+			return err
 		}
 		if onService {
 			key := fmt.Sprintf("%s/%d", queryCoordSegmentMetaPrefix, segmentID)
 			value, err := loader.etcdKV.Load(key)
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when load segment info from etcd", zap.Any("error", err.Error()))
-				continue
+				log.Warn("error when load segment info from etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 			segmentInfo := &querypb.SegmentInfo{}
 			err = proto.UnmarshalText(value, segmentInfo)
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when unmarshal segment info from etcd", zap.Any("error", err.Error()))
-				continue
+				log.Warn("error when unmarshal segment info from etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 			segmentInfo.SegmentState = querypb.SegmentState_sealed
 			newKey := fmt.Sprintf("%s/%d", queryNodeSegmentMetaPrefix, segmentID)
 			err = loader.etcdKV.Save(newKey, proto.MarshalTextString(segmentInfo))
 			if err != nil {
 				deleteSegment(segment)
-				log.Error("error when update segment info to etcd", zap.Any("error", err.Error()))
+				log.Warn("error when update segment info to etcd", zap.Any("error", err.Error()))
+				segmentGC()
+				return err
 			}
 		}
+		newSegments = append(newSegments, segment)
 	}
+	setSegments()
 
 	// sendQueryNodeStats
 	return loader.indexLoader.sendQueryNodeStats()
@@ -219,7 +222,7 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 	defer func() {
 		err := iCodec.Close()
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 		}
 	}()
 	blobs := make([]*storage.Blob, 0)
@@ -242,20 +245,16 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 			}
 			blobs = append(blobs, blob)
 		}
-		// mark the flag that vector raw data will be loaded into memory
-		if vecFieldInfo, err := segment.getVectorFieldInfo(fb.FieldID); err == nil {
-			vecFieldInfo.setRawDataInMemory(true)
-		}
 	}
 
 	_, _, insertData, err := iCodec.Deserialize(blobs)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return err
 	}
 
 	for fieldID, value := range insertData.Data {
-		var numRows int
+		var numRows []int64
 		var data interface{}
 		switch fieldData := value.(type) {
 		case *storage.BoolFieldData:
@@ -291,49 +290,18 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 		default:
 			return errors.New("unexpected field data type")
 		}
-		err = segment.segmentLoadFieldData(fieldID, numRows, data)
+		if fieldID == rootcoord.TimeStampField {
+			segment.setIDBinlogRowSizes(numRows)
+		}
+		totalNumRows := int64(0)
+		for _, numRow := range numRows {
+			totalNumRows += numRow
+		}
+		err = segment.segmentLoadFieldData(fieldID, int(totalNumRows), data)
 		if err != nil {
 			// TODO: return or continue?
 			return err
 		}
-	}
-
-	return nil
-}
-
-func (loader *segmentLoader) loadSegmentVectorFieldData(info *VectorFieldInfo) error {
-	iCodec := storage.InsertCodec{}
-	defer func() {
-		err := iCodec.Close()
-		if err != nil {
-			log.Error(err.Error())
-		}
-	}()
-	for _, path := range info.fieldBinlog.Binlogs {
-		if data := info.getRawData(path); data != nil {
-			continue
-		}
-
-		log.Debug("load vector raw data", zap.String("path", path))
-
-		binLog, err := loader.minioKV.Load(path)
-		if err != nil {
-			return err
-		}
-
-		blob := &storage.Blob{
-			Key:   path,
-			Value: []byte(binLog),
-		}
-
-		insertFieldData, err := iCodec.DeserializeOneVectorBinlog(blob)
-		if err != nil {
-			log.Error(err.Error())
-			return err
-		}
-
-		// save raw data into segment.vectorFieldInfo
-		info.setRawData(path, insertFieldData.Data)
 	}
 
 	return nil

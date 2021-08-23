@@ -79,6 +79,7 @@ SegmentInternalInterface::Search(const query::Plan* plan,
     check_search(plan);
     query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
     auto results = visitor.get_moved_result(*plan->plan_node_);
+    results.segment_ = (void*)this;
     return results;
 }
 
@@ -142,6 +143,7 @@ CreateDataArrayFrom(const void* data_raw, int64_t count, const FieldMeta& field_
     auto data_type = field_meta.get_data_type();
     auto data_array = std::make_unique<DataArray>();
     data_array->set_field_id(field_meta.get_id().get());
+    data_array->set_type(milvus::proto::schema::DataType(field_meta.get_data_type()));
 
     if (!datatype_is_vector(data_type)) {
         auto scalar_array = CreateScalarArrayFrom(data_raw, count, data_type);

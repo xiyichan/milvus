@@ -13,6 +13,7 @@ package storage
 
 import (
 	"errors"
+	"io"
 
 	miniokv "github.com/milvus-io/milvus/internal/kv/minio"
 )
@@ -27,7 +28,7 @@ func NewMinioChunkManager(minio *miniokv.MinIOKV) *MinioChunkManager {
 	}
 }
 
-func (mcm *MinioChunkManager) Load(key string) (string, error) {
+func (mcm *MinioChunkManager) GetPath(key string) (string, error) {
 	if !mcm.Exist(key) {
 		return "", errors.New("minio file manage cannot be found with key:" + key)
 	}
@@ -42,11 +43,24 @@ func (mcm *MinioChunkManager) Exist(key string) bool {
 	return mcm.minio.Exist(key)
 }
 
-func (mcm *MinioChunkManager) ReadAll(key string) ([]byte, error) {
+func (mcm *MinioChunkManager) Read(key string) ([]byte, error) {
 	results, err := mcm.minio.Load(key)
 	return []byte(results), err
 }
 
-func (mcm *MinioChunkManager) ReadAt(key string, p []byte, off int64) (n int, err error) {
-	return 0, errors.New("Minio file manager cannot readat")
+func (mcm *MinioChunkManager) ReadAt(key string, p []byte, off int64) (int, error) {
+	results, err := mcm.minio.Load(key)
+	if err != nil {
+		return -1, err
+	}
+
+	if off < 0 || int64(len([]byte(results))) < off {
+		return 0, errors.New("MinioChunkManager: invalid offset")
+	}
+	n := copy(p, []byte(results)[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
 }

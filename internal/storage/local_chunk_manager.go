@@ -18,6 +18,8 @@ import (
 	"path"
 
 	"golang.org/x/exp/mmap"
+
+	"github.com/milvus-io/milvus/internal/log"
 )
 
 type LocalChunkManager struct {
@@ -25,15 +27,12 @@ type LocalChunkManager struct {
 }
 
 func NewLocalChunkManager(localPath string) *LocalChunkManager {
-	if _, err := os.Stat(localPath); os.IsNotExist(err) {
-		os.MkdirAll(localPath, os.ModePerm)
-	}
 	return &LocalChunkManager{
 		localPath: localPath,
 	}
 }
 
-func (lcm *LocalChunkManager) Load(key string) (string, error) {
+func (lcm *LocalChunkManager) GetPath(key string) (string, error) {
 	if !lcm.Exist(key) {
 		return "", errors.New("local file cannot be found with key:" + key)
 	}
@@ -42,8 +41,15 @@ func (lcm *LocalChunkManager) Load(key string) (string, error) {
 }
 
 func (lcm *LocalChunkManager) Write(key string, content []byte) error {
-	path := path.Join(lcm.localPath, key)
-	err := ioutil.WriteFile(path, content, 0644)
+	filePath := path.Join(lcm.localPath, key)
+	dir := path.Dir(filePath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	err := ioutil.WriteFile(filePath, content, 0644)
 	if err != nil {
 		return err
 	}
@@ -59,7 +65,7 @@ func (lcm *LocalChunkManager) Exist(key string) bool {
 	return true
 }
 
-func (lcm *LocalChunkManager) ReadAll(key string) ([]byte, error) {
+func (lcm *LocalChunkManager) Read(key string) ([]byte, error) {
 	path := path.Join(lcm.localPath, key)
 	file, err := os.Open(path)
 	if err != nil {
@@ -76,7 +82,14 @@ func (lcm *LocalChunkManager) ReadAll(key string) ([]byte, error) {
 func (lcm *LocalChunkManager) ReadAt(key string, p []byte, off int64) (n int, err error) {
 	path := path.Join(lcm.localPath, key)
 	at, err := mmap.Open(path)
-	defer at.Close()
+	defer func() {
+		if at != nil {
+			err = at.Close()
+			if err != nil {
+				log.Error(err.Error())
+			}
+		}
+	}()
 	if err != nil {
 		return 0, err
 	}

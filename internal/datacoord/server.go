@@ -1,4 +1,6 @@
-// Copyright (C) 2019-2020 Zilliz. All rights reserved.//// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// Copyright (C) 2019-2020 Zilliz. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
 // http://www.apache.org/licenses/LICENSE-2.0
@@ -11,6 +13,7 @@ package datacoord
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -20,7 +23,6 @@ import (
 	datanodeclient "github.com/milvus-io/milvus/internal/distributed/datanode/client"
 	rootcoordclient "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
 	"github.com/milvus-io/milvus/internal/logutil"
-	"go.etcd.io/etcd/clientv3"
 	"go.uber.org/zap"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -33,6 +35,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 )
 
@@ -42,10 +45,20 @@ const (
 	connEtcdRetryInterval = 200 * time.Millisecond
 )
 
+var (
+	// TODO: sunby put to config
+	enableTtChecker  = true
+	ttCheckerName    = "dataTtChecker"
+	ttMaxInterval    = 3 * time.Minute
+	ttCheckerWarnMsg = fmt.Sprintf("we haven't received tt for %f minutes", ttMaxInterval.Minutes())
+)
+
 type (
 	UniqueID  = typeutil.UniqueID
 	Timestamp = typeutil.Timestamp
 )
+
+var errNilKvClient = errors.New("kv client not initialized")
 
 // ServerState type alias
 type ServerState = int64
@@ -70,6 +83,7 @@ type Server struct {
 	serverLoopCancel context.CancelFunc
 	serverLoopWg     sync.WaitGroup
 	isServing        ServerState
+	helper           ServerHelper
 
 	kvClient        *etcdkv.EtcdKV
 	meta            *meta
@@ -90,11 +104,27 @@ type Server struct {
 	rootCoordClientCreator rootCoordCreatorFunc
 }
 
+type ServerHelper struct {
+	eventAfterHandleDataNodeTt func()
+}
+
+func defaultServerHelper() ServerHelper {
+	return ServerHelper{
+		eventAfterHandleDataNodeTt: func() {},
+	}
+}
+
 type Option func(svr *Server)
 
 func SetRootCoordCreator(creator rootCoordCreatorFunc) Option {
 	return func(svr *Server) {
 		svr.rootCoordClientCreator = creator
+	}
+}
+
+func SetServerHelper(helper ServerHelper) Option {
+	return func(svr *Server) {
+		svr.helper = helper
 	}
 }
 
@@ -107,6 +137,7 @@ func CreateServer(ctx context.Context, factory msgstream.Factory, opts ...Option
 		flushCh:                make(chan UniqueID, 1024),
 		dataClientCreator:      defaultDataNodeCreatorFunc,
 		rootCoordClientCreator: defaultRootCoordCreatorFunc,
+		helper:                 defaultServerHelper(),
 	}
 
 	for _, opt := range opts {
@@ -177,7 +208,7 @@ func (s *Server) Start() error {
 	s.startServerLoop()
 
 	atomic.StoreInt64(&s.isServing, ServerStateHealthy)
-	log.Debug("DataCoordinator startup success")
+	log.Debug("dataCoordinator startup success")
 	return nil
 }
 
@@ -190,7 +221,7 @@ func (s *Server) initCluster() error {
 func (s *Server) initServiceDiscovery() error {
 	sessions, rev, err := s.session.GetSessions(typeutil.DataNodeRole)
 	if err != nil {
-		log.Debug("DataCoord initMeta failed", zap.Error(err))
+		log.Debug("dataCoord initMeta failed", zap.Error(err))
 		return err
 	}
 	log.Debug("registered sessions", zap.Any("sessions", sessions))
@@ -239,11 +270,12 @@ func (s *Server) startSegmentManager() {
 
 func (s *Server) initMeta() error {
 	connectEtcdFn := func() error {
-		etcdClient, err := clientv3.New(clientv3.Config{Endpoints: Params.EtcdEndpoints})
+		etcdKV, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
 		if err != nil {
 			return err
 		}
-		s.kvClient = etcdkv.NewEtcdKV(etcdClient, Params.MetaRootPath)
+
+		s.kvClient = etcdKV
 		s.meta, err = newMeta(s.kvClient)
 		if err != nil {
 			return err
@@ -268,7 +300,7 @@ func (s *Server) startStatsChannel(ctx context.Context) {
 	defer s.serverLoopWg.Done()
 	statsStream, _ := s.msFactory.NewMsgStream(ctx)
 	statsStream.AsConsumer([]string{Params.StatisticsChannelName}, Params.DataCoordSubscriptionName)
-	log.Debug("DataCoord stats stream",
+	log.Debug("dataCoord create stats channel consumer",
 		zap.String("channelName", Params.StatisticsChannelName),
 		zap.String("descriptionName", Params.DataCoordSubscriptionName))
 	statsStream.Start()
@@ -282,6 +314,7 @@ func (s *Server) startStatsChannel(ctx context.Context) {
 		}
 		msgPack := statsStream.Consume()
 		if msgPack == nil {
+			log.Debug("receive nil stats msg, shutdown stats channel")
 			return
 		}
 		for _, msg := range msgPack.Msgs {
@@ -290,7 +323,6 @@ func (s *Server) startStatsChannel(ctx context.Context) {
 					zap.Stringer("msgType", msg.Type()))
 				continue
 			}
-			log.Debug("Receive DataNode segment statistics update")
 			ssMsg := msg.(*msgstream.SegmentStatisticsMsg)
 			for _, stat := range ssMsg.SegStats {
 				s.meta.SetCurrentRows(stat.GetSegmentID(), stat.GetNumRows())
@@ -309,10 +341,17 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 	}
 	ttMsgStream.AsConsumer([]string{Params.TimeTickChannelName},
 		Params.DataCoordSubscriptionName)
-	log.Debug(fmt.Sprintf("DataCoord AsConsumer:%s:%s",
-		Params.TimeTickChannelName, Params.DataCoordSubscriptionName))
+	log.Debug("dataCoord create time tick channel consumer",
+		zap.String("timeTickChannelName", Params.TimeTickChannelName),
+		zap.String("subscriptionName", Params.DataCoordSubscriptionName))
 	ttMsgStream.Start()
 	defer ttMsgStream.Close()
+
+	var checker *LongTermChecker
+	if enableTtChecker {
+		checker = NewLongTermChecker(ctx, ttCheckerName, ttMaxInterval, ttCheckerWarnMsg)
+		checker.Start()
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -322,20 +361,23 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 		}
 		msgPack := ttMsgStream.Consume()
 		if msgPack == nil {
+			log.Debug("receive nil tt msg, shutdown tt channel")
 			return
 		}
 		for _, msg := range msgPack.Msgs {
 			if msg.Type() != commonpb.MsgType_DataNodeTt {
-				log.Warn("Receive unexpected msg type from tt channel",
+				log.Warn("receive unexpected msg type from tt channel",
 					zap.Stringer("msgType", msg.Type()))
 				continue
 			}
 			ttMsg := msg.(*msgstream.DataNodeTtMsg)
+			if enableTtChecker {
+				checker.Check()
+			}
 
 			ch := ttMsg.ChannelName
 			ts := ttMsg.Timestamp
-			// log.Debug("Receive datanode timetick msg", zap.String("channel", ch),
-			// zap.Any("ts", ts))
+			s.segmentManager.ExpireAllocations(ch, ts)
 			segments, err := s.segmentManager.GetFlushableSegments(ctx, ch, ts)
 			if err != nil {
 				log.Warn("get flushable segments failed", zap.Error(err))
@@ -345,7 +387,7 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 			if len(segments) == 0 {
 				continue
 			}
-			log.Debug("Flush segments", zap.Int64s("segmentIDs", segments))
+			log.Debug("flush segments", zap.Int64s("segmentIDs", segments))
 			segmentInfos := make([]*datapb.SegmentInfo, 0, len(segments))
 			for _, id := range segments {
 				sInfo := s.meta.GetSegment(id)
@@ -355,12 +397,13 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 					continue
 				}
 				segmentInfos = append(segmentInfos, sInfo.SegmentInfo)
+				s.meta.SetLastFlushTime(id, time.Now())
 			}
 			if len(segmentInfos) > 0 {
 				s.cluster.Flush(segmentInfos)
 			}
-			s.segmentManager.ExpireAllocations(ch, ts)
 		}
+		s.helper.eventAfterHandleDataNodeTt()
 	}
 }
 
@@ -381,12 +424,12 @@ func (s *Server) startWatchService(ctx context.Context) {
 			node := NewNodeInfo(ctx, info)
 			switch event.EventType {
 			case sessionutil.SessionAddEvent:
-				log.Info("Received datanode register",
+				log.Info("received datanode register",
 					zap.String("address", info.Address),
 					zap.Int64("serverID", info.Version))
 				s.cluster.Register(node)
 			case sessionutil.SessionDelEvent:
-				log.Info("Received datanode unregister",
+				log.Info("received datanode unregister",
 					zap.String("address", info.Address),
 					zap.Int64("serverID", info.Version))
 				s.cluster.UnRegister(node)
@@ -408,7 +451,7 @@ func (s *Server) startActiveCheck(ctx context.Context) {
 			if ok {
 				continue
 			}
-			s.Stop()
+			go func() { s.Stop() }()
 			log.Debug("disconnect with etcd and shutdown data coordinator")
 			return
 		case <-ctx.Done():
@@ -487,8 +530,7 @@ func (s *Server) Stop() error {
 	if !atomic.CompareAndSwapInt64(&s.isServing, ServerStateHealthy, ServerStateStopped) {
 		return nil
 	}
-	log.Debug("DataCoord server shutdown")
-	atomic.StoreInt64(&s.isServing, ServerStateStopped)
+	log.Debug("dataCoord server shutdown")
 	s.cluster.Close()
 	s.stopServerLoop()
 	return nil
@@ -557,18 +599,51 @@ func (s *Server) loadCollectionFromRootCoord(ctx context.Context, collectionID i
 	return nil
 }
 
-func (s *Server) prepareBinlog(req *datapb.SaveBinlogPathsRequest) (map[string]string, error) {
-	meta := make(map[string]string)
-
-	for _, fieldBlp := range req.Field2BinlogPaths {
-		fieldMeta, err := s.prepareField2PathMeta(req.SegmentID, fieldBlp)
-		if err != nil {
-			return nil, err
-		}
-		for k, v := range fieldMeta {
-			meta[k] = v
-		}
+// GetVChanPositions get vchannel latest postitions with provided dml channel names
+func (s *Server) GetVChanPositions(vchans []vchannel, seekFromStartPosition bool) ([]*datapb.VchannelInfo, error) {
+	if s.kvClient == nil {
+		return nil, errNilKvClient
 	}
+	pairs := make([]*datapb.VchannelInfo, 0, len(vchans))
 
-	return meta, nil
+	for _, vchan := range vchans {
+		segments := s.meta.GetSegmentsByChannel(vchan.DmlChannel)
+		flushedSegmentIDs := make([]UniqueID, 0)
+		unflushed := make([]*datapb.SegmentInfo, 0)
+		var seekPosition *internalpb.MsgPosition
+		var useUnflushedPosition bool
+		for _, s := range segments {
+			if s.State == commonpb.SegmentState_Flushing || s.State == commonpb.SegmentState_Flushed {
+				flushedSegmentIDs = append(flushedSegmentIDs, s.ID)
+				if seekPosition == nil || (!useUnflushedPosition && s.DmlPosition.Timestamp > seekPosition.Timestamp) {
+					seekPosition = s.DmlPosition
+				}
+				continue
+			}
+
+			if s.DmlPosition == nil {
+				continue
+			}
+
+			unflushed = append(unflushed, s.SegmentInfo)
+
+			if seekPosition == nil || !useUnflushedPosition || s.DmlPosition.Timestamp < seekPosition.Timestamp {
+				useUnflushedPosition = true
+				if !seekFromStartPosition {
+					seekPosition = s.DmlPosition
+				} else {
+					seekPosition = s.StartPosition
+				}
+			}
+		}
+
+		pairs = append(pairs, &datapb.VchannelInfo{
+			CollectionID:      vchan.CollectionID,
+			ChannelName:       vchan.DmlChannel,
+			SeekPosition:      seekPosition,
+			UnflushedSegments: unflushed,
+			FlushedSegments:   flushedSegmentIDs,
+		})
+	}
+	return pairs, nil
 }
