@@ -137,7 +137,7 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
 	if err != nil {
 		return nil, err
 	}

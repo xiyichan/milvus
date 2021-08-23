@@ -11,19 +11,20 @@ import (
 
 type kafkaClient struct {
 	client sarama.Client
+	broker []string
 }
 
 var kc *kafkaClient
 var kafkaOnce sync.Once
 
-func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, error) {
+func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
 	once.Do(func() {
-		c, err := sarama.NewClient([]string{"47.106.76.166:9092"}, opts)
+		c, err := sarama.NewClient(broker, opts)
 		if err != nil {
 			log.Error("Set kafka client failed, error", zap.Error(err))
 			return
 		}
-		cli := &kafkaClient{client: c}
+		cli := &kafkaClient{client: c, broker: broker}
 		kc = cli
 	})
 	return kc, nil
