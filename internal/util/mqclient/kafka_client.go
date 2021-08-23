@@ -19,6 +19,7 @@ var kafkaOnce sync.Once
 
 func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
 	once.Do(func() {
+		broker = []string{"47.106.76.166:9092"}
 		c, err := sarama.NewClient(broker, opts)
 		if err != nil {
 			log.Error("Set kafka client failed, error", zap.Error(err))
@@ -35,7 +36,7 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 	config.Version = sarama.V2_8_0_0
-	pp, err := sarama.NewSyncProducer([]string{"47.106.76.166:9092"}, config)
+	pp, err := sarama.NewSyncProducer(kc.broker, config)
 
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
@@ -55,7 +56,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
 	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
-	group, err := sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, options.SubscriptionName, config)
+	group, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, config)
 
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
