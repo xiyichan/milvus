@@ -12,7 +12,9 @@
 package mqclient
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"go.uber.org/zap"
 )
 
 type RmqConsumer struct {
@@ -50,6 +52,7 @@ func (rc *RmqConsumer) Seek(id MessageID) error {
 }
 
 func (rc *RmqConsumer) Ack(message ConsumerMessage) {
+	log.Info("ack msg", zap.Any("msg", message.Payload()))
 }
 
 func (rc *RmqConsumer) Close() {
