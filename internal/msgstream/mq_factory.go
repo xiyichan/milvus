@@ -137,7 +137,7 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,14 @@ func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 }
 
 func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
-	return f.NewMsgStream(ctx)
+	config := sarama.NewConfig()
+	config.Version = sarama.V2_8_0_0
+	config.Producer.Return.Successes = true
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	if err != nil {
+		return nil, err
+	}
+	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 func NewKmsFactory() Factory {
 	f := &KmsFactory{
