@@ -64,6 +64,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
+
 					panic(err)
 				}
 
@@ -110,7 +111,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	if err != nil {
 		return err
 	}
-	//kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	// kc.lock.Unlock()
 	return nil
 }
