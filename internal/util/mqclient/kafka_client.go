@@ -18,7 +18,7 @@ var kafkaOnce sync.Once
 
 func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, error) {
 	once.Do(func() {
-		c, err := sarama.NewClient([]string{broker}, opts)
+		c, err := sarama.NewClient([]string{"47.106.76.166:9092"}, opts)
 		if err != nil {
 			log.Error("Set kafka client failed, error", zap.Error(err))
 			return
