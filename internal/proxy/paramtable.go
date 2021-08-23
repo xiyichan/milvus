@@ -80,6 +80,7 @@ func (pt *ParamTable) initParams() {
 	pt.initEtcdEndpoints()
 	pt.initMetaRootPath()
 	pt.initPulsarAddress()
+	pt.initKafkaAddress()
 	pt.initRocksmqPath()
 	pt.initTimeTickInterval()
 	pt.initProxySubName()
