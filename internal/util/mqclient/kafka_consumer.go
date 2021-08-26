@@ -39,7 +39,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
-		log.Info("receive msg", zap.Any("msg", msg))
+		//log.Info("receive msg", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
 	kc.lock.Unlock()
@@ -97,7 +97,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	expected := id.(*kafkaID).messageID.Offset
-	log.Debug("reset offset", zap.Any("offset", expected))
+	log.Debug("reset offset", zap.Any("offset", expected), zap.Any("topic", kc.topicName), zap.Any("groupID", kc.groupID))
 	pom.ResetOffset(expected, "modified_meta")
 	actual, meta := pom.NextOffset()
 	if actual != expected {
@@ -121,9 +121,10 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
-	log.Info("ack msg", zap.Any("msg", message.Payload()))
+	//log.Info("ack msg", zap.Any("msg", message.Payload()))
 }
 func (kc *kafkaConsumer) Close() {
+	//加锁为了退出时消费消息已经消费完
 	kc.lock.Lock()
 	kc.g.Close()
 	kc.lock.Unlock()
