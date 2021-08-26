@@ -251,8 +251,10 @@ func (ms *mqMsgStream) Produce(msgPack *MsgPack) error {
 				sp.Finish()
 				return err
 			}
+			log.Info("send error2")
 			sp.Finish()
 		}
+		log.Info("send error2")
 	}
 	return nil
 }
@@ -289,7 +291,10 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 				sp.Finish()
 				return err
 			}
+			log.Info("send error")
+
 		}
+		log.Info("send error4")
 		ms.producerLock.Unlock()
 		sp.Finish()
 	}
