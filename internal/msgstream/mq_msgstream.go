@@ -290,7 +290,6 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 				return err
 			}
 		}
-		log.Info("send error4")
 		ms.producerLock.Unlock()
 		sp.Finish()
 	}
