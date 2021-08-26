@@ -57,17 +57,18 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 			log.Info("kafka start consume")
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
+				kc.lock.Lock()
 				topics := []string{kc.topicName}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				err = kc.g.Consume(ctx, topics, kc)
+
 				log.Debug("After consume")
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
-
 					panic(err)
 				}
-
+				kc.lock.Unlock()
 			}
 		}()
 
@@ -82,7 +83,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("kafka start seek")
 	//TODO:consumerGroup need close
-	// kc.lock.Lock()
+	kc.lock.Lock()
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
@@ -112,7 +113,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-	// kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
