@@ -81,9 +81,10 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	return kc.msgChannel
 }
 func (kc *kafkaConsumer) Seek(id MessageID) error {
-	log.Info("kafka start seek")
+	log.Info("function seek")
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
+	log.Info("kafka start seek")
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
 	if err != nil {
@@ -94,6 +95,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	expected := id.(*kafkaID).messageID.Offset
+	log.Debug("reset offset", zap.Any("offset", expected))
 	pom.ResetOffset(expected, "modified_meta")
 	actual, meta := pom.NextOffset()
 	if actual != expected {
