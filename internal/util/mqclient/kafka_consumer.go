@@ -102,10 +102,12 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	actual, meta := pom.NextOffset()
 	if actual != expected {
 		log.Error("kafka seek err")
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	err = pom.Close()
