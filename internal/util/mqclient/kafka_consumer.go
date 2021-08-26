@@ -122,6 +122,8 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 	log.Info("ack msg", zap.Any("msg", message.Payload()))
 }
 func (kc *kafkaConsumer) Close() {
+	kc.lock.Lock()
 	kc.g.Close()
+	kc.lock.Unlock()
 	//kc.c.Close()
 }
