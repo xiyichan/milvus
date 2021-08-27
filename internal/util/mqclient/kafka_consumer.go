@@ -34,7 +34,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 
 	log.Info("topic", zap.Any("t", claim.Topic()))
 	log.Info("message length", zap.Any("l", len(claim.Messages())))
-	kc.lock.Lock()
+	//kc.lock.Lock()
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
@@ -42,7 +42,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//log.Info("receive msg", zap.Any("msg", msg))
 		//fmt.Println(string(msg.Value))
 	}
-	kc.lock.Unlock()
+	//kc.lock.Unlock()
 	return nil
 }
 
@@ -59,7 +59,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 			log.Info("kafka start consume")
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
-
+				kc.lock.Lock()
 				topics := []string{kc.topicName}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				err = kc.g.Consume(ctx, topics, kc)
@@ -70,7 +70,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-
+				kc.lock.Unlock()
 			}
 		}()
 
