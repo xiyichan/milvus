@@ -18,6 +18,7 @@ type kafkaConsumer struct {
 	topicName  string
 	groupID    string
 	hasSeek    bool
+	status     chan int
 }
 
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
@@ -100,18 +101,20 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Debug("reset offset", zap.Any("offset", expected), zap.Any("topic", kc.topicName), zap.Any("groupID", kc.groupID))
 	pom.ResetOffset(expected, "modified_meta")
 	actual, meta := pom.NextOffset()
+
+	log.Debug("reset offset after", zap.Any("actual", actual), zap.Any("meta", meta))
 	if actual != expected {
 		log.Error("kafka seek err")
 
-		kc.lock.Unlock()
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
 
-		kc.lock.Unlock()
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	err = pom.Close()
