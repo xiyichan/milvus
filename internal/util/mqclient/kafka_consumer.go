@@ -33,17 +33,22 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
 
-	log.Info("topic", zap.Any("t", claim.Topic()))
-	log.Info("message length", zap.Any("l", len(claim.Messages())))
-	//kc.lock.Lock()
+	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
+
+	kc.lock.Lock()
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
-		//log.Info("receive msg", zap.Any("msg", msg))
+		log.Info("receive msg", zap.Any("msg", msg.Value))
 		//fmt.Println(string(msg.Value))
 	}
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
+	if len(claim.Messages()) == 0 {
+		log.Info("close msgChannel")
+		close(kc.msgChannel)
+	}
+
 	return nil
 }
 
@@ -60,21 +65,19 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 			log.Info("kafka start consume")
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
-				kc.lock.Lock()
+				//kc.lock.Lock()
 				topics := []string{kc.topicName}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				err = kc.g.Consume(ctx, topics, kc)
-
-				log.Debug("After consume")
+				log.Debug("After consume", zap.Any("topic", topics))
 				if err != nil {
 					log.Info("err topic", zap.Any("topic", topics))
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
-				kc.lock.Unlock()
+				//	kc.lock.Unlock()
 			}
 		}()
-
 	}
 	if kc.msgChannel == nil {
 		log.Debug("consume finish error")

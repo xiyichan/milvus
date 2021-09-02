@@ -13,7 +13,9 @@ package msgstream
 
 import (
 	"context"
+	"fmt"
 	"github.com/Shopify/sarama"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"log"
 	"math/rand"
 	"os"
@@ -1156,6 +1158,7 @@ func sendMsgPacks(ms MsgStream, msgPacks []*MsgPack) error {
 func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts ...RepackFunc) MsgStream {
 	factory := ProtoUDFactory{}
 	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
 	config.Version = sarama.V2_8_0_0
 	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
@@ -1167,67 +1170,70 @@ func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts .
 	return inputStream
 }
 
-//
-//func getKafkaOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
-//	factory := ProtoUDFactory{}
-//	config := sarama.NewConfig()
-//	config.Version = sarama.V2_8_0_0
-//	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
-//	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-//	outputStream.AsConsumer(consumerChannels, consumerSubName)
-//	outputStream.Start()
-//	return outputStream
-//}
-//func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
-//	factory := ProtoUDFactory{}
-//	config := sarama.NewConfig()
-//	config.Version = sarama.V2_8_0_0
-//	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
-//	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-//	outputStream.AsConsumer(consumerChannels, consumerSubName)
-//	outputStream.Start()
-//	return outputStream
-//}
-//func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPosition) MsgStream {
-//	factory := ProtoUDFactory{}
-//	config := sarama.NewConfig()
-//	config.Version = sarama.V2_8_0_0
-//	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
-//	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-//	consumerName := []string{}
-//	for _, c := range positions {
-//		consumerName = append(consumerName, c.ChannelName)
-//	}
-//	outputStream.AsConsumer(consumerName, positions[0].MsgGroup)
-//	outputStream.Seek(positions)
-//	outputStream.Start()
-//	return outputStream
-//}
-//
-//func TestStream_KafkaMsgStream_Insert(t *testing.T) {
-//	kafkaAddress, _ := Params.Load("_KafkaAddress")
-//	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-//	producerChannels := []string{c1, c2}
-//	consumerChannels := []string{c1, c2}
-//	consumerSubName := funcutil.RandomString(8)
-//
-//	msgPack := MsgPack{}
-//	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-//	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 3))
-//
-//	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-//	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-//
-//	err := inputStream.Produce(&msgPack)
-//	if err != nil {
-//		log.Fatalf("produce error = %v", err)
-//	}
-//
-//	receiveMsg(outputStream, len(msgPack.Msgs))
-//	inputStream.Close()
-//	outputStream.Close()
-//}
-//
+func getKafkaOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
+	factory := ProtoUDFactory{}
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Version = sarama.V2_8_0_0
+	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	outputStream.AsConsumer(consumerChannels, consumerSubName)
+	outputStream.Start()
+	return outputStream
+}
+func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
+	factory := ProtoUDFactory{}
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Version = sarama.V2_8_0_0
+	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	outputStream.AsConsumer(consumerChannels, consumerSubName)
+	outputStream.Start()
+	return outputStream
+}
+func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPosition) MsgStream {
+	factory := ProtoUDFactory{}
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Version = sarama.V2_8_0_0
+	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	consumerName := []string{}
+	for _, c := range positions {
+		consumerName = append(consumerName, c.ChannelName)
+	}
+	outputStream.AsConsumer(consumerName, positions[0].MsgGroup)
+	outputStream.Seek(positions)
+	outputStream.Start()
+	return outputStream
+}
+
+func TestStream_KafkaMsgStream_Insert(t *testing.T) {
+	kafkaAddress, _ := Params.Load("_KafkaAddress")
+	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
+	producerChannels := []string{c1, c2}
+	consumerChannels := []string{c1, c2}
+	consumerSubName := funcutil.RandomString(8)
+
+	msgPack := MsgPack{}
+	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
+	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 3))
+
+	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
+	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+
+	err := inputStream.Produce(&msgPack)
+	if err != nil {
+		log.Fatalf("produce error = %v", err)
+	}
+
+	receiveMsg(outputStream, len(msgPack.Msgs))
+	fmt.Println("close err")
+	inputStream.Close()
+	outputStream.Close()
+}
+
 //func TestStream_KafkaMsgStream_Delete(t *testing.T) {
 //	kafkaAddress, _ := Params.Load("_KafkaAddress")
 //	c := funcutil.RandomString(8)
