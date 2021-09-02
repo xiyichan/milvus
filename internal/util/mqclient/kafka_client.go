@@ -55,12 +55,12 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	c := kc.client
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
-	config.Producer.Return.Successes = true
+	//config.Producer.Return.Successes = true
 	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
 	group, err := sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, options.SubscriptionName, config)
 
 	if err != nil {
-		log.Error("kafka create sync producer , error", zap.Error(err))
+		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
 	//defer func() { _ = group.Close() }()
@@ -68,23 +68,9 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	// Track errors
 	go func() {
 		for err = range group.Errors() {
-			log.Error("kafka create sync producer , error", zap.Error(err))
+			log.Error("kafka create consumer track error", zap.Error(err))
 		}
 	}()
-
-	//ctx := context.Background()
-	//for {
-	//	topics := []string{options.Topic}
-	//	handler := exampleConsumerGroupHandler{}
-	//
-	//	// `Consume` should be called inside an infinite loop, when a
-	//	// server-side rebalance happens, the consumer session will need to be
-	//	// recreated to get the new claims
-	//	err := group.Consume(ctx, topics, handler)
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//}
 
 	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName}
 	return consumer, nil
