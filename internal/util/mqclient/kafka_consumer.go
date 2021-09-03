@@ -37,7 +37,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 	log.Info("consumer claim start")
 
 	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
-	//kc.lock.Lock()
+	kc.lock.Lock()
 
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
@@ -54,7 +54,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 
 	}
 
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 
