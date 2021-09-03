@@ -37,6 +37,7 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 	c := kc.client
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
 	config.Version = sarama.V2_8_0_0
 	pp, err := sarama.NewSyncProducer([]string{"47.106.76.166:9092"}, config)
 
@@ -57,6 +58,8 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	c := kc.client
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
+	config.Consumer.Offsets.Initial = -2
+	config.Consumer.Offsets.AutoCommit.Enable = true
 	//config.Producer.Return.Successes = true
 	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
 	group, err := sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, options.SubscriptionName, config)

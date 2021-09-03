@@ -14,19 +14,22 @@ type kafkaConsumer struct {
 	g          sarama.ConsumerGroup
 	c          sarama.Client
 	msgChannel chan ConsumerMessage
+	wg         sync.WaitGroup
 	lock       sync.Mutex
 	topicName  string
+	end        chan bool
 	groupID    string
 	hasSeek    bool
-	status     chan int
 }
 
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
-
+	log.Info("setup")
 	return nil
 }
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
-
+	log.Info("Clean up")
+	close(kc.end)
+	//close(kc.msgChannel)
 	return nil
 
 }
@@ -34,21 +37,24 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 	log.Info("consumer claim start")
 
 	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
+	//kc.lock.Lock()
 
-	kc.lock.Lock()
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
 		log.Info("receive msg", zap.Any("msg", msg.Value))
 		//fmt.Println(string(msg.Value))
-	}
-	kc.lock.Unlock()
-	if len(claim.Messages()) == 0 {
-		log.Info("close msgChannel")
-		close(kc.msgChannel)
+		if len(claim.Messages()) == 0 {
+			log.Info("close msgChannel success")
+			close(kc.msgChannel)
+			//close(kc.end)
+			break
+		}
+
 	}
 
+	//kc.lock.Unlock()
 	return nil
 }
 
@@ -61,11 +67,19 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 	if kc.msgChannel == nil {
 		kc.msgChannel = make(chan ConsumerMessage)
 		ctx := context.Background()
+		kc.wg.Add(1)
+
 		go func() {
+
+			defer func() {
+				kc.wg.Done()
+			}()
 			log.Info("kafka start consume")
+			kc.end = make(chan bool)
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
 				//kc.lock.Lock()
+
 				topics := []string{kc.topicName}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				err = kc.g.Consume(ctx, topics, kc)
@@ -75,7 +89,26 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Error("kafka consume err", zap.Error(err))
 					panic(err)
 				}
+				if ctx.Err() != nil {
+					log.Info("ctx err", zap.Any("ctx", ctx.Err()))
+					return
+				}
+
 				//	kc.lock.Unlock()
+				//select {
+				////case <-ctx.Value()==context.WithCancel():
+				////	//log.Debug("context closed")
+				////	return
+				//	case _,ok:=<-kc.end:
+				//		if !ok{
+				//		return
+				//	}
+				//}
+				_, ok := <-kc.end
+				if !ok {
+					log.Info("kafka end consume")
+					return
+				}
 			}
 		}()
 	}
@@ -138,6 +171,8 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
 	kc.lock.Lock()
+
+	kc.wg.Wait()
 	kc.g.Close()
 	kc.lock.Unlock()
 	//kc.c.Close()
