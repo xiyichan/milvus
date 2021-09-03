@@ -77,7 +77,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 		}
 	}()
 
-	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName}
+	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName, closeCh: make(chan struct{})}
 	kc.consumerLock.Unlock()
 	return consumer, nil
 

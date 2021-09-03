@@ -17,9 +17,9 @@ type kafkaConsumer struct {
 	wg         sync.WaitGroup
 	lock       sync.Mutex
 	topicName  string
-	end        chan bool
-	groupID    string
-	hasSeek    bool
+	//end        chan bool
+	groupID string
+	closeCh chan struct{}
 }
 
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
@@ -28,8 +28,9 @@ func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 }
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	log.Info("Clean up")
-	close(kc.end)
 	//close(kc.msgChannel)
+	close(kc.closeCh)
+	//
 	return nil
 
 }
@@ -68,14 +69,9 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		kc.msgChannel = make(chan ConsumerMessage)
 		ctx := context.Background()
 		kc.wg.Add(1)
-
 		go func() {
-
-			defer func() {
-				kc.wg.Done()
-			}()
 			log.Info("kafka start consume")
-			kc.end = make(chan bool)
+
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
 				//kc.lock.Lock()
@@ -93,22 +89,18 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Info("ctx err", zap.Any("ctx", ctx.Err()))
 					return
 				}
-
-				//	kc.lock.Unlock()
-				//select {
-				////case <-ctx.Value()==context.WithCancel():
-				////	//log.Debug("context closed")
-				////	return
-				//	case _,ok:=<-kc.end:
-				//		if !ok{
-				//		return
-				//	}
-				//}
-				_, ok := <-kc.end
-				if !ok {
-					log.Info("kafka end consume")
+				select {
+				case <-kc.closeCh:
+					kc.wg.Done()
 					return
+
 				}
+				//_, ok := <-kc.closeCh:
+				//if !ok {
+				//	log.Info("close kafka consume")
+				//	kc.wg.Done()
+				//	return
+				//}
 			}
 		}()
 	}
@@ -171,7 +163,7 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
 	kc.lock.Lock()
-
+	//	close(kc.closeCh)
 	kc.wg.Wait()
 	kc.g.Close()
 	kc.lock.Unlock()
