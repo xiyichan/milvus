@@ -1642,9 +1642,11 @@ func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
 	outputStream.Close()
 
 	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+	t.Log("consume before")
 	p1 := outputStream.Consume()
 	p2 := outputStream.Consume()
 	p3 := outputStream.Consume()
+	t.Log("consume after ")
 	t.Log(p1.BeginTs)
 	t.Log(p2.BeginTs)
 	t.Log(p3.BeginTs)
