@@ -1188,7 +1188,7 @@ func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, con
 	factory := ProtoUDFactory{}
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.Initial = -2
+	config.Consumer.Offsets.Initial = -1
 	config.Version = sarama.V2_8_0_0
 	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
