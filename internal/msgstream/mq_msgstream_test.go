@@ -1200,6 +1200,7 @@ func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPositio
 	factory := ProtoUDFactory{}
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
 	config.Version = sarama.V2_8_0_0
 	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
@@ -1643,6 +1644,20 @@ func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
 	outputStream.Close()
 
 	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+
+	err = inputStream.Broadcast(&msgPack0)
+	assert.Nil(t, err)
+	err = inputStream.Produce(&msgPack1)
+	assert.Nil(t, err)
+	err = inputStream.Broadcast(&msgPack2)
+	assert.Nil(t, err)
+	err = inputStream.Produce(&msgPack3)
+	assert.Nil(t, err)
+	err = inputStream.Broadcast(&msgPack4)
+	assert.Nil(t, err)
+	err = inputStream.Broadcast(&msgPack5)
+	assert.Nil(t, err)
+
 	t.Log("consume before")
 	p1 := outputStream.Consume()
 	p2 := outputStream.Consume()
