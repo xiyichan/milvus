@@ -158,13 +158,13 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		log.Error("kafka seek err")
 
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-		kc.lock.Unlock()
+		//kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-		kc.lock.Unlock()
+		//kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	err = pom.Close()
