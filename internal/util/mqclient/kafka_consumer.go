@@ -176,6 +176,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		return err
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	log.Info("reset offset success")
 	//kc.lock.Unlock()
 	return nil
 }
