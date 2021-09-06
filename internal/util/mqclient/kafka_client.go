@@ -54,7 +54,7 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
-	kc.consumerLock.Lock()
+	//kc.consumerLock.Lock()
 	c := kc.client
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
@@ -78,7 +78,7 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	}()
 
 	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName, closeCh: make(chan struct{})}
-	kc.consumerLock.Unlock()
+	//kc.consumerLock.Unlock()
 	return consumer, nil
 
 }
