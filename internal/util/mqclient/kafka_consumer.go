@@ -122,7 +122,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Info("close kafka consume")
 					kc.wg.Wait()
 					//kc.wg.Done()
-					break
+					return
 				}
 			}
 		}()
