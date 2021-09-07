@@ -172,16 +172,21 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
-	log.Info("pom close")
-	err = pom.Close()
-	if err != nil {
-		return err
-	}
-	log.Info("of close")
-	err = of.Close()
-	if err != nil {
-		return err
-	}
+	defer func() {
+		log.Info("pom close")
+		err = pom.Close()
+		if err != nil {
+			log.Error("", zap.Any("err", err))
+			//return err
+		}
+		log.Info("of close")
+		err = of.Close()
+		if err != nil {
+			log.Error("", zap.Any("err", err))
+			//return err
+		}
+	}()
+
 	log.Info("reconnect consumerGroup")
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	log.Info("reset offset success")
@@ -197,7 +202,6 @@ func (kc *kafkaConsumer) Close() {
 
 	close(kc.closeCh)
 	kc.lock.Lock()
-	log.Info("close consumer1111")
 
 	//	kc.wg.Wait()
 	err := kc.g.Close()
@@ -205,6 +209,6 @@ func (kc *kafkaConsumer) Close() {
 		log.Error("err", zap.Any("err", err))
 	}
 	kc.lock.Unlock()
-	log.Info("close consumer122222221")
+	log.Info("close consumer success")
 	//kc.c.Close()
 }

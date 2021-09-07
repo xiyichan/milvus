@@ -746,10 +746,13 @@ func (ms *MqTtMsgStream) Seek(msgPositions []*internalpb.MsgPosition) error {
 
 		runLoop := true
 		for runLoop {
+			log.Info("Tt seek start ")
 			select {
+
 			case <-ms.ctx.Done():
 				return nil
 			case msg, ok := <-consumer.Chan():
+				log.Info("Tt seek start  chan")
 				if !ok {
 					return fmt.Errorf("consumer closed")
 				}
