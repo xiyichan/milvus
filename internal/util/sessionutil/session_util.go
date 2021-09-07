@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/retry"
-	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -195,7 +195,7 @@ func (s *Session) registerService() (<-chan *clientv3.LeaseKeepAliveResponse, er
 			Then(clientv3.OpPut(path.Join(s.metaRoot, DefaultServiceRoot, key), string(sessionJSON), clientv3.WithLease(resp.ID))).Commit()
 
 		if err != nil {
-			fmt.Printf("compare and swap error %s\n. maybe the key has registered", err)
+			log.Warn("compare and swap error, maybe the key has ben registered", zap.Error(err))
 			return err
 		}
 

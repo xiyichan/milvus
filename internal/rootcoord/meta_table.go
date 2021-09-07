@@ -174,6 +174,7 @@ func (mt *metaTable) reloadFromKV() error {
 		mt.indexID2Meta[meta.IndexID] = meta
 	}
 
+	log.Debug("reload meta table from KV successfully")
 	return nil
 }
 
@@ -877,7 +878,7 @@ func (mt *metaTable) unlockIsSegmentIndexed(segID typeutil.UniqueID, fieldSchema
 }
 
 // return segment ids, type params, error
-func (mt *metaTable) GetNotIndexedSegments(collName string, fieldName string, idxInfo *pb.IndexInfo, segIDs []typeutil.UniqueID) ([]typeutil.UniqueID, schemapb.FieldSchema, error) {
+func (mt *metaTable) GetNotIndexedSegments(collName string, fieldName string, idxInfo *pb.IndexInfo, segIDs []typeutil.UniqueID, ts typeutil.Timestamp) ([]typeutil.UniqueID, schemapb.FieldSchema, error) {
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
 
@@ -944,8 +945,7 @@ func (mt *metaTable) GetNotIndexedSegments(collName string, fieldName string, id
 			v := proto.MarshalTextString(&dupInfo)
 			meta[k] = v
 		}
-
-		err = mt.client.MultiSave(meta, 0)
+		err = mt.client.MultiSave(meta, ts)
 		if err != nil {
 			log.Error("SnapShotKV MultiSave fail", zap.Error(err))
 			panic("SnapShotKV MultiSave fail")
@@ -967,7 +967,7 @@ func (mt *metaTable) GetNotIndexedSegments(collName string, fieldName string, id
 				meta[k] = v
 			}
 
-			err = mt.client.MultiSave(meta, 0)
+			err = mt.client.MultiSave(meta, ts)
 			if err != nil {
 				log.Error("SnapShotKV MultiSave fail", zap.Error(err))
 				panic("SnapShotKV MultiSave fail")

@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
@@ -65,7 +66,10 @@ type queryCollection struct {
 	queryMsgStream       msgstream.MsgStream
 	queryResultMsgStream msgstream.MsgStream
 
-	vcm storage.ChunkManager
+	localChunkManager  storage.ChunkManager
+	remoteChunkManager storage.ChunkManager
+	vectorChunkManager storage.ChunkManager
+	localCacheEnabled  bool
 }
 
 type ResultEntityIds []UniqueID
@@ -76,7 +80,9 @@ func newQueryCollection(releaseCtx context.Context,
 	historical *historical,
 	streaming *streaming,
 	factory msgstream.Factory,
-	vcm storage.ChunkManager,
+	localChunkManager storage.ChunkManager,
+	remoteChunkManager storage.ChunkManager,
+	localCacheEnabled bool,
 ) *queryCollection {
 
 	unsolvedMsg := make([]queryMsg, 0)
@@ -102,7 +108,9 @@ func newQueryCollection(releaseCtx context.Context,
 		queryMsgStream:       queryStream,
 		queryResultMsgStream: queryResultStream,
 
-		vcm: vcm,
+		localChunkManager:  localChunkManager,
+		remoteChunkManager: remoteChunkManager,
+		localCacheEnabled:  localCacheEnabled,
 	}
 
 	qc.register()
@@ -245,33 +253,6 @@ func (q *queryCollection) consumeQuery() {
 
 func (q *queryCollection) loadBalance(msg *msgstream.LoadBalanceSegmentsMsg) {
 	//TODO:: get loadBalance info from etcd
-	//log.Debug("consume load balance message",
-	//	zap.Int64("msgID", msg.ID()))
-	//nodeID := Params.QueryNodeID
-	//for _, info := range msg.Infos {
-	//	segmentID := info.SegmentID
-	//	if nodeID == info.SourceNodeID {
-	//		err := s.historical.replica.removeSegment(segmentID)
-	//		if err != nil {
-	//			log.Warn("loadBalance failed when remove segment",
-	//				zap.Error(err),
-	//				zap.Any("segmentID", segmentID))
-	//		}
-	//	}
-	//	if nodeID == info.DstNodeID {
-	//		segment, err := s.historical.replica.getSegmentByID(segmentID)
-	//		if err != nil {
-	//			log.Warn("loadBalance failed when making segment on service",
-	//				zap.Error(err),
-	//				zap.Any("segmentID", segmentID))
-	//			continue // not return, try to load balance all segment
-	//		}
-	//		segment.setOnService(true)
-	//	}
-	//}
-	//log.Debug("load balance done",
-	//	zap.Int64("msgID", msg.ID()),
-	//	zap.Int("num of segment", len(msg.Infos)))
 }
 
 func (q *queryCollection) receiveQueryMsg(msg queryMsg) error {
@@ -304,8 +285,8 @@ func (q *queryCollection) receiveQueryMsg(msg queryMsg) error {
 		//	zap.Int64("target collectionID", collectionID),
 		//	zap.Int64("msgID", msg.ID()),
 		//)
-		err := fmt.Errorf("not target collection query request, collectionID = %d, targetCollectionID = %d, msgID = %d", q.collectionID, collectionID, msg.ID())
-		return err
+		//err := fmt.Errorf("not target collection query request, collectionID = %d, targetCollectionID = %d, msgID = %d", q.collectionID, collectionID, msg.ID())
+		return nil
 	}
 
 	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
@@ -867,31 +848,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	sp.LogFields(oplog.String("statistical time", "segment search end"))
 	if len(searchResults) <= 0 {
-		for _, group := range searchRequests {
-			nq := group.getNumOfQuery()
-			nilHits := make([][]byte, nq)
-			hit := &milvuspb.Hits{}
-			for i := 0; i < int(nq); i++ {
-				bs, err := proto.Marshal(hit)
-				if err != nil {
-					return err
-				}
-				nilHits[i] = bs
-			}
-
-			// TODO: remove inefficient code in cgo and use SearchResultData directly
-			// TODO: Currently add a translate layer from hits to SearchResultData
-			// TODO: hits marshal and unmarshal is likely bottleneck
-
-			transformed, err := translateHits(schema, searchMsg.OutputFieldsId, nilHits)
-			if err != nil {
-				return err
-			}
-			byteBlobs, err := proto.Marshal(transformed)
-			if err != nil {
-				return err
-			}
-
+		for range searchRequests {
 			resultChannelInt := 0
 			searchResultMsg := &msgstream.SearchResultMsg{
 				BaseMsg: msgstream.BaseMsg{Ctx: searchMsg.Ctx, HashValues: []uint32{uint32(resultChannelInt)}},
@@ -904,11 +861,12 @@ func (q *queryCollection) search(msg queryMsg) error {
 					},
 					Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 					ResultChannelID:          searchMsg.ResultChannelID,
-					Hits:                     nilHits,
-					SlicedBlob:               byteBlobs,
+					MetricType:               plan.getMetricType(),
+					NumQueries:               queryNum,
+					TopK:                     topK,
+					SlicedBlob:               nil,
 					SlicedOffset:             1,
 					SlicedNumCount:           1,
-					MetricType:               plan.getMetricType(),
 					SealedSegmentIDsSearched: sealedSegmentSearched,
 					ChannelIDsSearched:       q.collection.getVChannels(),
 					GlobalSealedSegmentIDs:   globalSealedSegments,
@@ -995,11 +953,12 @@ func (q *queryCollection) search(msg queryMsg) error {
 				},
 				Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 				ResultChannelID:          searchMsg.ResultChannelID,
-				Hits:                     hits,
+				MetricType:               plan.getMetricType(),
+				NumQueries:               queryNum,
+				TopK:                     topK,
 				SlicedBlob:               byteBlobs,
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
-				MetricType:               plan.getMetricType(),
 				SealedSegmentIDsSearched: sealedSegmentSearched,
 				ChannelIDsSearched:       q.collection.getVChannels(),
 				GlobalSealedSegmentIDs:   globalSealedSegments,
@@ -1059,12 +1018,8 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 		return err
 	}
 
-	req := &segcorepb.RetrieveRequest{
-		Ids:            retrieveMsg.Ids,
-		OutputFieldsId: retrieveMsg.OutputFieldsId,
-	}
-
-	plan, err := createRetrievePlan(collection, req, timestamp)
+	expr := retrieveMsg.SerializedExprPlan
+	plan, err := createRetrievePlanByExpr(collection, expr, timestamp)
 	if err != nil {
 		return err
 	}
@@ -1081,8 +1036,21 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 
 	var mergeList []*segcorepb.RetrieveResults
 
+	if q.vectorChunkManager == nil {
+		if q.localChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+		}
+		if q.remoteChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+		}
+		q.vectorChunkManager = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
+			&etcdpb.CollectionMeta{
+				ID:     collection.id,
+				Schema: collection.schema,
+			}, q.localCacheEnabled)
+	}
 	// historical retrieve
-	hisRetrieveResults, sealedSegmentRetrieved, err1 := q.historical.retrieve(collectionID, retrieveMsg.PartitionIDs, q.vcm, plan)
+	hisRetrieveResults, sealedSegmentRetrieved, err1 := q.historical.retrieve(collectionID, retrieveMsg.PartitionIDs, q.vectorChunkManager, plan)
 	if err1 != nil {
 		log.Warn(err1.Error())
 		return err1
@@ -1135,6 +1103,27 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 	)
 	tr.Elapse("all done")
 	return nil
+}
+
+func getSegmentsByPKs(pks []int64, segments []*Segment) (map[int64][]int64, error) {
+	if pks == nil {
+		return nil, fmt.Errorf("pks is nil when getSegmentsByPKs")
+	}
+	if segments == nil {
+		return nil, fmt.Errorf("segments is nil when getSegmentsByPKs")
+	}
+	results := make(map[int64][]int64)
+	buf := make([]byte, 8)
+	for _, segment := range segments {
+		for _, pk := range pks {
+			binary.BigEndian.PutUint64(buf, uint64(pk))
+			exist := segment.pkFilter.Test(buf)
+			if exist {
+				results[segment.segmentID] = append(results[segment.segmentID], pk)
+			}
+		}
+	}
+	return results, nil
 }
 
 func mergeRetrieveResults(dataArr []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {

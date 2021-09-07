@@ -29,6 +29,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
@@ -90,6 +91,8 @@ type Segment struct {
 
 	vectorFieldMutex sync.RWMutex // guards vectorFieldInfos
 	vectorFieldInfos map[UniqueID]*VectorFieldInfo
+
+	pkFilter *bloom.BloomFilter //  bloom filter of pk inside a segment
 }
 
 //-------------------------------------------------------------------------------------- common interfaces
@@ -309,7 +312,7 @@ func (s *Segment) getEntityByIds(plan *RetrievePlan) (*segcorepb.RetrieveResults
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
-	resProto := C.GetEntityByIds(s.segmentPtr, plan.cRetrievePlan, C.uint64_t(plan.Timestamp))
+	resProto := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, C.uint64_t(plan.Timestamp))
 	result := new(segcorepb.RetrieveResults)
 	err := HandleCProtoResult(&resProto, result)
 	if err != nil {
@@ -570,6 +573,7 @@ func (s *Segment) segmentPreDelete(numOfRecords int) int64 {
 	return int64(offset)
 }
 
+// TODO: remove reference of slice
 func (s *Segment) segmentInsert(offset int64, entityIDs *[]UniqueID, timestamps *[]Timestamp, records *[]*commonpb.Blob) error {
 	/*
 		CStatus

@@ -30,11 +30,6 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 )
 
-const ctxTimeInMillisecond = 5000
-const debug = false
-
-const defaultPartitionID = UniqueID(2021)
-
 type queryCoordMock struct {
 	types.QueryCoord
 }
@@ -109,6 +104,25 @@ func genTestCollectionSchema(collectionID UniqueID, isBinary bool, dim int) *sch
 
 func genTestCollectionMeta(collectionID UniqueID, isBinary bool) *etcdpb.CollectionInfo {
 	schema := genTestCollectionSchema(collectionID, isBinary, 16)
+
+	collectionMeta := etcdpb.CollectionInfo{
+		ID:           collectionID,
+		Schema:       schema,
+		CreateTime:   Timestamp(0),
+		PartitionIDs: []UniqueID{defaultPartitionID},
+	}
+
+	return &collectionMeta
+}
+
+func genTestCollectionMetaWithPK(collectionID UniqueID, isBinary bool) *etcdpb.CollectionInfo {
+	schema := genTestCollectionSchema(collectionID, isBinary, 16)
+	schema.Fields = append(schema.Fields, &schemapb.FieldSchema{
+		FieldID:      UniqueID(0),
+		Name:         "id",
+		IsPrimaryKey: true,
+		DataType:     schemapb.DataType_Int64,
+	})
 
 	collectionMeta := etcdpb.CollectionInfo{
 		ID:           collectionID,
