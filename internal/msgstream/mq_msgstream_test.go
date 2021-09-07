@@ -13,6 +13,7 @@ package msgstream
 
 import (
 	"context"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -1192,8 +1193,11 @@ func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, con
 	config.Version = sarama.V2_8_0_0
 	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	fmt.Println("Tt111")
 	outputStream.AsConsumer(consumerChannels, consumerSubName)
+	fmt.Println("Tt2222")
 	outputStream.Start()
+	fmt.Println("Tt3333")
 	return outputStream
 }
 func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPosition) MsgStream {
