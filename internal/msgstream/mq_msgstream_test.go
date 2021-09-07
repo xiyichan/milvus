@@ -1644,20 +1644,6 @@ func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
 	outputStream.Close()
 
 	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err = inputStream.Broadcast(&msgPack0)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack1)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack2)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack3)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack4)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack5)
-	assert.Nil(t, err)
-
 	t.Log("consume before")
 	p1 := outputStream.Consume()
 	p2 := outputStream.Consume()
