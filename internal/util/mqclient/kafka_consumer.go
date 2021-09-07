@@ -185,6 +185,8 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 }
 func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
+	close(kc.closeCh)
+
 	kc.lock.Lock()
 	//	close(kc.closeCh)
 	//	kc.wg.Wait()
