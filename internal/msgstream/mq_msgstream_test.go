@@ -1792,8 +1792,10 @@ func TestStream_KafkaTtMsgStream_2(t *testing.T) {
 		msgCount := len(rcvMsgPacks)
 		if msgCount == 0 {
 			outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+			t.Log("11111111")
 		} else {
 			outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, rcvMsgPacks[msgCount-1].EndPositions)
+			t.Log("2222222")
 		}
 		msgPack := outputStream.Consume()
 		rcvMsgPacks = append(rcvMsgPacks, msgPack)
