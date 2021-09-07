@@ -13,7 +13,6 @@ package msgstream
 
 import (
 	"context"
-	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -1193,11 +1192,8 @@ func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, con
 	config.Version = sarama.V2_8_0_0
 	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-	fmt.Println("Tt111")
 	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	fmt.Println("Tt2222")
 	outputStream.Start()
-	fmt.Println("Tt3333")
 	return outputStream
 }
 func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPosition) MsgStream {
@@ -1594,75 +1590,75 @@ func TestStream_KafkaMsgStream_Insert(t *testing.T) {
 //	outputStream.Close()
 //}
 
-//no pass
-func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1 := funcutil.RandomString(8)
-	producerChannels := []string{c1}
-	consumerChannels := []string{c1}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack0 := MsgPack{}
-	msgPack0.Msgs = append(msgPack0.Msgs, getTimeTickMsg(0))
-
-	msgPack1 := MsgPack{}
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 19))
-
-	msgPack2 := MsgPack{}
-	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5))
-
-	msgPack3 := MsgPack{}
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 14))
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 9))
-
-	msgPack4 := MsgPack{}
-	msgPack4.Msgs = append(msgPack4.Msgs, getTimeTickMsg(11))
-
-	msgPack5 := MsgPack{}
-	msgPack5.Msgs = append(msgPack5.Msgs, getTimeTickMsg(15))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Broadcast(&msgPack0)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack1)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack2)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack3)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack4)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack5)
-	assert.Nil(t, err)
-
-	o1 := outputStream.Consume()
-	o2 := outputStream.Consume()
-	o3 := outputStream.Consume()
-
-	t.Log(o1.BeginTs)
-	t.Log(o2.BeginTs)
-	t.Log(o3.BeginTs)
-	outputStream.Close()
-
-	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-	t.Log("consume before")
-	p1 := outputStream.Consume()
-	p2 := outputStream.Consume()
-	p3 := outputStream.Consume()
-	t.Log("consume after ")
-	t.Log(p1.BeginTs)
-	t.Log(p2.BeginTs)
-	t.Log(p3.BeginTs)
-	outputStream.Close()
-
-	assert.Equal(t, o1.BeginTs, p1.BeginTs)
-	assert.Equal(t, o2.BeginTs, p2.BeginTs)
-	assert.Equal(t, o3.BeginTs, p3.BeginTs)
-
-}
+////no pass
+//func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
+//	kafkaAddress, _ := Params.Load("_KafkaAddress")
+//	c1 := funcutil.RandomString(8)
+//	producerChannels := []string{c1}
+//	consumerChannels := []string{c1}
+//	consumerSubName := funcutil.RandomString(8)
+//
+//	msgPack0 := MsgPack{}
+//	msgPack0.Msgs = append(msgPack0.Msgs, getTimeTickMsg(0))
+//
+//	msgPack1 := MsgPack{}
+//	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
+//	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 19))
+//
+//	msgPack2 := MsgPack{}
+//	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5))
+//
+//	msgPack3 := MsgPack{}
+//	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 14))
+//	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 9))
+//
+//	msgPack4 := MsgPack{}
+//	msgPack4.Msgs = append(msgPack4.Msgs, getTimeTickMsg(11))
+//
+//	msgPack5 := MsgPack{}
+//	msgPack5.Msgs = append(msgPack5.Msgs, getTimeTickMsg(15))
+//
+//	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
+//	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+//
+//	err := inputStream.Broadcast(&msgPack0)
+//	assert.Nil(t, err)
+//	err = inputStream.Produce(&msgPack1)
+//	assert.Nil(t, err)
+//	err = inputStream.Broadcast(&msgPack2)
+//	assert.Nil(t, err)
+//	err = inputStream.Produce(&msgPack3)
+//	assert.Nil(t, err)
+//	err = inputStream.Broadcast(&msgPack4)
+//	assert.Nil(t, err)
+//	err = inputStream.Broadcast(&msgPack5)
+//	assert.Nil(t, err)
+//
+//	o1 := outputStream.Consume()
+//	o2 := outputStream.Consume()
+//	o3 := outputStream.Consume()
+//
+//	t.Log(o1.BeginTs)
+//	t.Log(o2.BeginTs)
+//	t.Log(o3.BeginTs)
+//	outputStream.Close()
+//
+//	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+//	t.Log("consume before")
+//	p1 := outputStream.Consume()
+//	p2 := outputStream.Consume()
+//	p3 := outputStream.Consume()
+//	t.Log("consume after ")
+//	t.Log(p1.BeginTs)
+//	t.Log(p2.BeginTs)
+//	t.Log(p3.BeginTs)
+//	outputStream.Close()
+//
+//	assert.Equal(t, o1.BeginTs, p1.BeginTs)
+//	assert.Equal(t, o2.BeginTs, p2.BeginTs)
+//	assert.Equal(t, o3.BeginTs, p3.BeginTs)
+//
+//}
 
 ////no pass
 //func TestStream_KafkaTtMsgStream_Seek(t *testing.T) {
@@ -1769,63 +1765,63 @@ func TestStream_KafkaTtMsgStream_1(t *testing.T) {
 	outputStream.Close()
 }
 
-////nopass
-//func TestStream_KafkaTtMsgStream_2(t *testing.T) {
-//	kafkaAddress, _ := Params.Load("_KafkaAddress")
-//	c1 := funcutil.RandomString(8)
-//	c2 := funcutil.RandomString(8)
-//	p1Channels := []string{c1}
-//	p2Channels := []string{c2}
-//	consumerChannels := []string{c1, c2}
-//	consumerSubName := funcutil.RandomString(8)
-//
-//	inputStream1 := getKafkaInputStream([]string{kafkaAddress}, p1Channels)
-//	msgPacks1 := createRandMsgPacks(3, 10, 10)
-//	assert.Nil(t, sendMsgPacks(inputStream1, msgPacks1))
-//
-//	inputStream2 := getKafkaInputStream([]string{kafkaAddress}, p2Channels)
-//	msgPacks2 := createRandMsgPacks(5, 10, 10)
-//	assert.Nil(t, sendMsgPacks(inputStream2, msgPacks2))
-//
-//	// consume msg
-//	log.Println("=============receive msg===================")
-//	rcvMsgPacks := make([]*MsgPack, 0)
-//
-//	resumeMsgPack := func(t *testing.T) int {
-//		var outputStream MsgStream
-//		msgCount := len(rcvMsgPacks)
-//		if msgCount == 0 {
-//			outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-//		} else {
-//			outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, rcvMsgPacks[msgCount-1].EndPositions)
-//		}
-//		msgPack := outputStream.Consume()
-//		rcvMsgPacks = append(rcvMsgPacks, msgPack)
-//		if len(msgPack.Msgs) > 0 {
-//			for _, msg := range msgPack.Msgs {
-//				log.Println("msg type: ", msg.Type(), ", msg value: ", msg)
-//				assert.Greater(t, msg.BeginTs(), msgPack.BeginTs)
-//				assert.LessOrEqual(t, msg.BeginTs(), msgPack.EndTs)
-//			}
-//			log.Println("================")
-//		}
-//		log.Println("=============close1===================")
-//		outputStream.Close()
-//		log.Println("=============close1 success===================")
-//		return len(rcvMsgPacks[msgCount].Msgs)
-//	}
-//
-//	msgCount := 0
-//	for i := 0; i < len(msgPacks1)/2; i++ {
-//		msgCount += resumeMsgPack(t)
-//	}
-//	cnt1 := (len(msgPacks1)/2 - 1) * len(msgPacks1[0].Msgs)
-//	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
-//	assert.Equal(t, (cnt1 + cnt2), msgCount)
-//	log.Println("=============close2===================")
-//	inputStream1.Close()
-//	inputStream2.Close()
-//}
+//nopass
+func TestStream_KafkaTtMsgStream_2(t *testing.T) {
+	kafkaAddress, _ := Params.Load("_KafkaAddress")
+	c1 := funcutil.RandomString(8)
+	c2 := funcutil.RandomString(8)
+	p1Channels := []string{c1}
+	p2Channels := []string{c2}
+	consumerChannels := []string{c1, c2}
+	consumerSubName := funcutil.RandomString(8)
+
+	inputStream1 := getKafkaInputStream([]string{kafkaAddress}, p1Channels)
+	msgPacks1 := createRandMsgPacks(3, 10, 10)
+	assert.Nil(t, sendMsgPacks(inputStream1, msgPacks1))
+
+	inputStream2 := getKafkaInputStream([]string{kafkaAddress}, p2Channels)
+	msgPacks2 := createRandMsgPacks(5, 10, 10)
+	assert.Nil(t, sendMsgPacks(inputStream2, msgPacks2))
+
+	// consume msg
+	log.Println("=============receive msg===================")
+	rcvMsgPacks := make([]*MsgPack, 0)
+
+	resumeMsgPack := func(t *testing.T) int {
+		var outputStream MsgStream
+		msgCount := len(rcvMsgPacks)
+		if msgCount == 0 {
+			outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
+		} else {
+			outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, rcvMsgPacks[msgCount-1].EndPositions)
+		}
+		msgPack := outputStream.Consume()
+		rcvMsgPacks = append(rcvMsgPacks, msgPack)
+		if len(msgPack.Msgs) > 0 {
+			for _, msg := range msgPack.Msgs {
+				log.Println("msg type: ", msg.Type(), ", msg value: ", msg)
+				assert.Greater(t, msg.BeginTs(), msgPack.BeginTs)
+				assert.LessOrEqual(t, msg.BeginTs(), msgPack.EndTs)
+			}
+			log.Println("================")
+		}
+		log.Println("=============close1===================")
+		outputStream.Close()
+		log.Println("=============close1 success===================")
+		return len(rcvMsgPacks[msgCount].Msgs)
+	}
+
+	msgCount := 0
+	for i := 0; i < len(msgPacks1)/2; i++ {
+		msgCount += resumeMsgPack(t)
+	}
+	cnt1 := (len(msgPacks1)/2 - 1) * len(msgPacks1[0].Msgs)
+	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
+	assert.Equal(t, (cnt1 + cnt2), msgCount)
+	log.Println("=============close2===================")
+	inputStream1.Close()
+	inputStream2.Close()
+}
 
 //pass
 func TestStream_KafkaMqMsgStream_Seek(t *testing.T) {
