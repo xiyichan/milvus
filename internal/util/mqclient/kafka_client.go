@@ -59,8 +59,8 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Consumer.Offsets.Initial = -2
-	config.Consumer.Offsets.AutoCommit.Enable = true
-	//config.Producer.Return.Successes = true
+	//config.Consumer.Offsets.AutoCommit.Enable = true
+	config.Producer.Return.Successes = true
 	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
 	group, err := sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, options.SubscriptionName, config)
 
