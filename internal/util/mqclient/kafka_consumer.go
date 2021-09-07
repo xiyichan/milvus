@@ -137,7 +137,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("function seek")
 	//TODO:consumerGroup need close
-	//kc.lock.Lock()
+	kc.lock.Lock()
 	log.Info("kafka start seek")
 	kc.g.Close()
 	of, err := sarama.NewOffsetManagerFromClient(kc.groupID, kc.c)
@@ -158,13 +158,13 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		log.Error("kafka seek err")
 
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-		//kc.lock.Unlock()
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
 		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
-		//kc.lock.Unlock()
+		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	err = pom.Close()
@@ -177,7 +177,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	}
 	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 	log.Info("reset offset success")
-	//kc.lock.Unlock()
+	kc.lock.Unlock()
 	return nil
 }
 func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
