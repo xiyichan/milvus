@@ -32,7 +32,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	//所有claim推出之后 关闭msgChan
 	close(kc.msgChannel)
 	log.Info("close kc.msgChannel")
-	close(kc.closeCh)
+	//close(kc.closeCh)
 	log.Info("close kc.closeCh")
 	//
 	return nil
@@ -71,7 +71,6 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//	break
 		//}
 	}
-	kc.wg.Done()
 	return nil
 }
 
@@ -86,12 +85,13 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 		ctx := context.Background()
 
 		go func() {
+
 			log.Info("kafka start consume")
 			//kc.closeClaim = make(chan struct{})
 			//kc.g, err = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 			for {
 				//kc.lock.Lock()
-
+				kc.lock.Lock()
 				topics := []string{kc.topicName}
 				log.Debug("Before consume", zap.Any("topic", topics))
 				//	kc.lock.Lock()
@@ -121,9 +121,11 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					//等所有协程claim退出在退出for
 					log.Info("close kafka consume")
 					kc.wg.Wait()
+
 					//kc.wg.Done()
-					return
+					break
 				}
+				kc.lock.Unlock()
 			}
 		}()
 	}
@@ -185,12 +187,18 @@ func (kc *kafkaConsumer) Ack(message ConsumerMessage) {
 }
 func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
-	close(kc.closeCh)
+	log.Info("close consumer")
 
+	close(kc.closeCh)
 	kc.lock.Lock()
-	//	close(kc.closeCh)
+	log.Info("close consumer1111")
+
 	//	kc.wg.Wait()
-	kc.g.Close()
+	err := kc.g.Close()
+	if err != nil {
+		log.Error("err", zap.Any("err", err))
+	}
 	kc.lock.Unlock()
+	log.Info("close consumer122222221")
 	//kc.c.Close()
 }

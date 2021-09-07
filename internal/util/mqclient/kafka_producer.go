@@ -18,7 +18,7 @@ func (kp *kafkaProducer) Topic() string {
 }
 func (kp *kafkaProducer) Send(ctx context.Context, message *ProducerMessage) error {
 	//log.Info("send message topic ", zap.Any("topic", kp.topic))
-	msg := &sarama.ProducerMessage{Topic: kp.topic, Value: sarama.ByteEncoder(message.Payload)}
+	msg := &sarama.ProducerMessage{Topic: kp.topic, Value: sarama.ByteEncoder(message.Payload), Partition: 0}
 	partition, offset, err := kp.p.SendMessage(msg)
 	if err != nil {
 		//log.Printf("FAILED to send message: %s\n", err)
