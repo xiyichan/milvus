@@ -298,6 +298,7 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 
 func (ms *mqMsgStream) Consume() *MsgPack {
 	for {
+		log.Info("conumser1231231")
 		select {
 		case <-ms.ctx.Done():
 			//log.Debug("context closed")
