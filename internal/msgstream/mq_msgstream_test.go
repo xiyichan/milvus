@@ -1706,7 +1706,7 @@ func TestStream_KafkaTtMsgStream_Seek(t *testing.T) {
 	receivedMsg := outputStream.Consume()
 	outputStream.Close()
 	outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, receivedMsg.EndPositions)
-
+	t.Log("wocao")
 	err = inputStream.Broadcast(&msgPack5)
 	assert.Nil(t, err)
 	seekMsg := outputStream.Consume()
