@@ -1165,6 +1165,7 @@ func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts .
 
 	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
 
+	inputStream.AsProducer(producerChannels)
 	for _, opt := range opts {
 		inputStream.SetRepackFunc(opt)
 	}
