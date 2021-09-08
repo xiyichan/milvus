@@ -1166,7 +1166,10 @@ func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts .
 	if err != nil {
 		fmt.Println(err)
 	}
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	inputStream, err := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	if err != nil {
+		fmt.Println(err)
+	}
 	inputStream.AsProducer(producerChannels)
 	for _, opt := range opts {
 		inputStream.SetRepackFunc(opt)
