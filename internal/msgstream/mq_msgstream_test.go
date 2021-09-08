@@ -13,6 +13,7 @@ package msgstream
 
 import (
 	"context"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -1161,7 +1162,10 @@ func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts .
 	config.Consumer.Offsets.AutoCommit.Enable = true
 	config.Consumer.Offsets.Initial = -2
 	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	if err != nil {
+		fmt.Println(err)
+	}
 	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
 	inputStream.AsProducer(producerChannels)
 	for _, opt := range opts {
