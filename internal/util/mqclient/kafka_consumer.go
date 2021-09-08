@@ -141,6 +141,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
 	log.Info("kafka start seek")
+	log.Info("kc status", zap.Any("kc status", kc.c.Closed()))
 	err := kc.g.Close()
 	if err != nil {
 		return err
@@ -192,6 +193,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	config.Producer.Return.Successes = true
 	config.Consumer.Offsets.Initial = -2
 	config.Version = sarama.V2_8_0_0
+	//不能使用newconsumerGroupfromclent
 	kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 	log.Info("reset offset success")
 	kc.lock.Unlock()
