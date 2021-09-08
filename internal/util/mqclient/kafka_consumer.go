@@ -172,23 +172,27 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
-	defer func() {
-		log.Info("pom close")
-		err = pom.Close()
-		if err != nil {
-			log.Error("", zap.Any("err", err))
-			//return err
-		}
-		log.Info("of close")
-		err = of.Close()
-		if err != nil {
-			log.Error("", zap.Any("err", err))
-			//return err
-		}
-	}()
+
+	log.Info("pom close")
+	err = pom.Close()
+	if err != nil {
+		log.Error("", zap.Any("err", err))
+		return err
+	}
+	log.Info("of close")
+	//TODO:不知道为什么这个为什么会关不了
+	err = of.Close()
+	if err != nil {
+		log.Error("", zap.Any("err", err))
+		return err
+	}
 
 	log.Info("reconnect consumerGroup")
-	kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
+	config.Version = sarama.V2_8_0_0
+	kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 	log.Info("reset offset success")
 	kc.lock.Unlock()
 	return nil

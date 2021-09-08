@@ -1707,22 +1707,7 @@ func TestStream_KafkaTtMsgStream_Seek(t *testing.T) {
 	outputStream.Consume()
 	receivedMsg := outputStream.Consume()
 	outputStream.Close()
-	//	outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, receivedMsg.EndPositions)
-
-	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.Initial = -2
-	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
-	outputStream, _ = NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-	consumerName := []string{}
-	for _, c := range receivedMsg.EndPositions {
-		consumerName = append(consumerName, c.ChannelName)
-	}
-	outputStream.AsConsumer(consumerName, receivedMsg.EndPositions[0].MsgGroup)
-	outputStream.Seek(receivedMsg.EndPositions)
-	outputStream.Start()
+	outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, receivedMsg.EndPositions)
 
 	t.Log("wocao")
 	err = inputStream.Broadcast(&msgPack5)
