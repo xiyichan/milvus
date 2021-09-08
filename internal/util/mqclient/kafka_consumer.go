@@ -71,6 +71,7 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//	break
 		//}
 	}
+	kc.wg.Done()
 	return nil
 }
 
@@ -119,8 +120,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				if !ok {
 					//close(kc.closeClaim)
 					//等所有协程claim退出在退出for
-					log.Info("close kafka consume")
-					kc.wg.Wait()
+					log.Info("关闭线程")
 
 					//kc.wg.Done()
 					break
@@ -206,9 +206,9 @@ func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
 	log.Info("close consumer")
 
-	close(kc.closeCh)
 	kc.lock.Lock()
-
+	close(kc.closeCh)
+	kc.wg.Wait()
 	//	kc.wg.Wait()
 	err := kc.g.Close()
 	if err != nil {
