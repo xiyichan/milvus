@@ -49,29 +49,16 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
 		log.Info("receive msg", zap.Any("msg", msg.Value))
-		//fmt.Println(string(msg.Value))
-		//if len(claim.Messages()) == 0 {
-		//	log.Info("close msgChannel success")
-		//	close(kc.msgChannel)
-		//	//close(kc.end)
-		//	break
-		//}
 
-		//_,ok:= <-kc.closeClaim
-		//if !ok{
-		//	log.Info("clos msgChannel success")
-		//	close(kc.msgChannel)
-		//	break
-		//}
 		//收到了关闭的请求,所有协程都得退出
-		//_, ok := <-kc.closeCh
-		//if !ok {
-		//	//close(kc.closeClaim)
-		//	log.Info("关闭协程")
-		//	break
-		//}
+		_, ok := <-kc.closeCh
+		if !ok {
+			log.Info("关闭协程")
+			break
+		}
 	}
 	kc.wg.Done()
+	log.Info("关闭协程")
 	return nil
 }
 
@@ -116,15 +103,15 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				//	return
 				//
 				//}
-				_, ok := <-kc.closeCh
-				if !ok {
-					//close(kc.closeClaim)
-					//等所有协程claim退出在退出for
-					log.Info("关闭线程")
-
-					//kc.wg.Done()
-					break
-				}
+				//_, ok := <-kc.closeCh
+				//if !ok {
+				//	//close(kc.closeClaim)
+				//	//等所有协程claim退出在退出for
+				//	log.Info("关闭线程")
+				//
+				//	//kc.wg.Done()
+				//	break
+				//}
 
 			}
 		}()
