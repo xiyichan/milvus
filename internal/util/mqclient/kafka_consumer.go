@@ -140,6 +140,10 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("function seek")
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
+	config.Version = sarama.V2_8_0_0
 	log.Info("kafka start seek")
 	log.Info("kc status", zap.Any("kc status", kc.c.Closed()))
 	err := kc.g.Close()
@@ -163,13 +167,13 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	if actual != expected {
 		log.Error("kafka seek err")
 
-		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+		kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
-		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
+		kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
@@ -189,10 +193,7 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	}
 
 	log.Info("reconnect consumerGroup")
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.Initial = -2
-	config.Version = sarama.V2_8_0_0
+
 	//不能使用newconsumerGroupfromclent
 	kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 	log.Info("reset offset success")
