@@ -209,7 +209,7 @@ func (kc *kafkaConsumer) Close() {
 	kc.lock.Lock()
 	close(kc.closeCh)
 	log.Info("关闭信号")
-	kc.wg.Wait()
+	//kc.wg.Wait()
 	log.Info("协程所有关闭")
 	//	kc.wg.Wait()
 	err := kc.g.Close()
