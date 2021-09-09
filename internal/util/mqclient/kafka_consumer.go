@@ -33,7 +33,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	close(kc.msgChannel)
 	log.Info("close kc.msgChannel")
 	//close(kc.closeCh)
-	//log.Info("close kc.closeCh")
+	log.Info("close kc.closeCh")
 	//
 	return nil
 
@@ -49,17 +49,29 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
 		log.Info("receive msg", zap.Any("msg", msg.Value))
+		//fmt.Println(string(msg.Value))
+		//if len(claim.Messages()) == 0 {
+		//	log.Info("close msgChannel success")
+		//	close(kc.msgChannel)
+		//	//close(kc.end)
+		//	break
+		//}
 
+		//_,ok:= <-kc.closeClaim
+		//if !ok{
+		//	log.Info("clos msgChannel success")
+		//	close(kc.msgChannel)
+		//	break
+		//}
 		//收到了关闭的请求,所有协程都得退出
-		//	_, ok := <-kc.closeCh
-		//	if !ok {
-		//		log.Info("关闭协程")
-		//		break
-		//	}
-
+		//_, ok := <-kc.closeCh
+		//if !ok {
+		//	//close(kc.closeClaim)
+		//	log.Info("关闭协程")
+		//	break
+		//}
 	}
-	//	kc.wg.Done()
-	log.Info("关闭协程")
+	kc.wg.Done()
 	return nil
 }
 
@@ -96,14 +108,21 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Info("ctx err", zap.Any("ctx", ctx.Err()))
 					return
 				}
-
+				//select {
+				//case <-kc.closeCh:
+				//	log.Info("consumer close")
+				//
+				//	kc.wg.Done()
+				//	return
+				//
+				//}
 				_, ok := <-kc.closeCh
 				if !ok {
 					//close(kc.closeClaim)
 					//等所有协程claim退出在退出for
 					log.Info("关闭线程")
 
-					kc.wg.Done()
+					//kc.wg.Done()
 					break
 				}
 
@@ -121,10 +140,6 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	log.Info("function seek")
 	//TODO:consumerGroup need close
 	kc.lock.Lock()
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.Initial = -2
-	config.Version = sarama.V2_8_0_0
 	log.Info("kafka start seek")
 	log.Info("kc status", zap.Any("kc status", kc.c.Closed()))
 	err := kc.g.Close()
@@ -148,13 +163,13 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	if actual != expected {
 		log.Error("kafka seek err")
 
-		kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
+		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
 	if meta != "modified_meta" {
 		log.Error("kafka seek err")
-		kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
+		kc.g, _ = sarama.NewConsumerGroupFromClient(kc.groupID, kc.c)
 		kc.lock.Unlock()
 		return errors.New("seek error")
 	}
@@ -174,7 +189,10 @@ func (kc *kafkaConsumer) Seek(id MessageID) error {
 	}
 
 	log.Info("reconnect consumerGroup")
-
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
+	config.Version = sarama.V2_8_0_0
 	//不能使用newconsumerGroupfromclent
 	kc.g, _ = sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, kc.groupID, config)
 	log.Info("reset offset success")
@@ -189,12 +207,8 @@ func (kc *kafkaConsumer) Close() {
 	log.Info("close consumer")
 
 	kc.lock.Lock()
-	//TODO：我认为这个也有bug
-
 	close(kc.closeCh)
-	log.Info("关闭信号")
 	kc.wg.Wait()
-	log.Info("协程全关闭")
 	//	kc.wg.Wait()
 	err := kc.g.Close()
 	if err != nil {
