@@ -208,8 +208,12 @@ func (kc *kafkaConsumer) Close() {
 	log.Info("close consumer")
 
 	kc.lock.Lock()
+	//TODO：我认为这个也有bug
+
 	close(kc.closeCh)
+	log.Info("关闭信号")
 	kc.wg.Wait()
+	log.Info("协程全关闭")
 	//	kc.wg.Wait()
 	err := kc.g.Close()
 	if err != nil {
