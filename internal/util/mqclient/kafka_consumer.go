@@ -24,14 +24,12 @@ type kafkaConsumer struct {
 }
 
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
-	kc.wg.Add(1)
 	log.Info("setup")
 	return nil
 }
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	log.Info("Clean up")
 	//所有claim推出之后 关闭msgChan
-	kc.wg.Done()
 	close(kc.msgChannel)
 
 	return nil
