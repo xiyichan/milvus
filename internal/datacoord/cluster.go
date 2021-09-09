@@ -12,6 +12,7 @@
 package datacoord
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -25,7 +26,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/types"
 	"go.uber.org/zap"
-	"golang.org/x/net/context"
 )
 
 const clusterPrefix = "cluster-prefix/"
@@ -101,6 +101,7 @@ func defaultAssignPolicy() channelAssignPolicy {
 	return newBalancedAssignPolicy()
 }
 
+// NewCluster creates a cluster with provided components
 func NewCluster(ctx context.Context, kv kv.TxnKV, store ClusterStore,
 	posProvider positionProvider, opts ...ClusterOption) (*Cluster, error) {
 	ctx, cancel := context.WithCancel(ctx)
@@ -217,6 +218,8 @@ func (c *Cluster) handleEvent(node *NodeInfo) {
 	ch := node.GetEventChannel()
 	version := node.Info.GetVersion()
 	for {
+		log.Info("into handleEvent for")
+		log.Info("ch", zap.Any("ch", <-ch))
 		select {
 		case <-ctx.Done():
 			return

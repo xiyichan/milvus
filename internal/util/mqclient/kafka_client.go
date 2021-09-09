@@ -10,27 +10,37 @@ import (
 )
 
 type kafkaClient struct {
-	client sarama.Client
+	client       sarama.Client
+	broker       []string
+	consumerLock sync.Mutex
 }
 
 var kc *kafkaClient
 var kafkaOnce sync.Once
 
-func GetKafkaClientInstance(broker string, opts *sarama.Config) (*kafkaClient, error) {
-	once.Do(func() {
-		c, err := sarama.NewClient([]string{broker}, opts)
+func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
+	kafkaOnce.Do(func() {
+		//broker = []string{"47.106.76.166:9092"}
+		log.Info("kafka broker", zap.Any("broker", broker))
+		c, err := sarama.NewClient(broker, opts)
 		if err != nil {
 			log.Error("Set kafka client failed, error", zap.Error(err))
 			return
 		}
-		cli := &kafkaClient{client: c}
+		cli := &kafkaClient{client: c, broker: broker}
 		kc = cli
 	})
 	return kc, nil
 }
 
 func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error) {
-	pp, err := sarama.NewSyncProducerFromClient(kc.client)
+	c := kc.client
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Consumer.Offsets.Initial = -2
+	config.Version = sarama.V2_8_0_0
+	pp, err := sarama.NewSyncProducer([]string{"47.106.76.166:9092"}, config)
+
 	if err != nil {
 		log.Error("kafka create sync producer , error", zap.Error(err))
 		return nil, err
@@ -38,41 +48,37 @@ func (kc *kafkaClient) CreateProducer(options ProducerOptions) (Producer, error)
 	if pp == nil {
 		return nil, errors.New("kafka is not ready, producer is nil")
 	}
-	producer := &kafkaProducer{p: pp, c: kc.client, topic: options.Topic}
+	producer := &kafkaProducer{p: pp, c: c, topic: options.Topic}
 	return producer, nil
 }
 
 func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
-	group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, kc.client)
+	//kc.consumerLock.Lock()
+	c := kc.client
+	config := sarama.NewConfig()
+	config.Version = sarama.V2_8_0_0
+	config.Consumer.Offsets.Initial = -2
+	//config.Consumer.Offsets.AutoCommit.Enable = true
+	config.Producer.Return.Successes = true
+	//group, err := sarama.NewConsumerGroupFromClient(options.SubscriptionName, c)
+	group, err := sarama.NewConsumerGroup([]string{"47.106.76.166:9092"}, options.SubscriptionName, config)
+
 	if err != nil {
-		log.Error("kafka create sync producer , error", zap.Error(err))
+		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
-	defer func() { _ = group.Close() }()
+	//defer func() { _ = group.Close() }()
 
 	// Track errors
 	go func() {
 		for err = range group.Errors() {
-			log.Error("kafka create sync producer , error", zap.Error(err))
+			log.Error("kafka create consumer track error", zap.Error(err))
 		}
 	}()
 
-	//ctx := context.Background()
-	//for {
-	//	topics := []string{options.Topic}
-	//	handler := exampleConsumerGroupHandler{}
-	//
-	//	// `Consume` should be called inside an infinite loop, when a
-	//	// server-side rebalance happens, the consumer session will need to be
-	//	// recreated to get the new claims
-	//	err := group.Consume(ctx, topics, handler)
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//}
-
-	consumer := &kafkaConsumer{g: group, c: kc.client, topicName: options.Topic, groupID: options.SubscriptionName}
+	consumer := &kafkaConsumer{g: group, c: c, topicName: options.Topic, groupID: options.SubscriptionName, closeCh: make(chan struct{})}
+	//kc.consumerLock.Unlock()
 	return consumer, nil
 
 }

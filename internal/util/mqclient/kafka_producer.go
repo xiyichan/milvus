@@ -14,17 +14,17 @@ type kafkaProducer struct {
 }
 
 func (kp *kafkaProducer) Topic() string {
-	return ""
+	return kp.topic
 }
 func (kp *kafkaProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	log.Info("send message topic ", zap.Any("topic", kp.topic))
-	msg := &sarama.ProducerMessage{Topic: kp.topic, Value: sarama.ByteEncoder(message.Payload)}
+	//log.Info("send message topic ", zap.Any("topic", kp.topic))
+	msg := &sarama.ProducerMessage{Topic: kp.topic, Value: sarama.ByteEncoder(message.Payload), Partition: 0}
 	partition, offset, err := kp.p.SendMessage(msg)
 	if err != nil {
 		//log.Printf("FAILED to send message: %s\n", err)
 		log.Error("FAILED to send message", zap.Error(err))
 	} else {
-		log.Debug("> message sent to ", zap.Any("partition", partition), zap.Any("offset", offset))
+		log.Debug("> message sent to ", zap.Any("message length", len(message.Payload)), zap.Any("topic", kp.topic), zap.Any("partition", partition), zap.Any("offset", offset))
 	}
 
 	return nil

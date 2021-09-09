@@ -21,6 +21,12 @@ import (
 	"strings"
 	"syscall"
 
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
+
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+
 	"github.com/milvus-io/milvus/cmd/roles"
 )
 
@@ -37,6 +43,7 @@ const (
 	roleStandalone = "standalone"
 )
 
+// inject variable at build-time
 var (
 	BuildTags = "unknown"
 	BuildTime = "unknown"
@@ -57,6 +64,16 @@ func printBanner() {
 	fmt.Println("GitCommit: " + GitCommit)
 	fmt.Println("GoVersion: " + GoVersion)
 	fmt.Println()
+}
+
+func injectVariablesToEnv() {
+	// inject in need
+
+	err := os.Setenv(metricsinfo.GitCommitEnvKey, GitCommit)
+	if err != nil {
+		log.Warn("failed to inject git commit to environment variable",
+			zap.Error(err))
+	}
 }
 
 func getPidFileName(serverType string, alias string) string {
@@ -204,7 +221,6 @@ func main() {
 	}
 
 	var localMsg = false
-	var kafka = false
 	role := roles.MilvusRoles{}
 	switch serverType {
 	case roleRootCoord:
@@ -239,7 +255,6 @@ func main() {
 		role.EnableIndexNode = true
 		role.EnableMsgStreamCoord = true
 		localMsg = true
-		kafka = false
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown server type = %s\n", serverType)
 		os.Exit(-1)
@@ -259,12 +274,13 @@ func main() {
 	switch command {
 	case "run":
 		printBanner()
+		injectVariablesToEnv()
 		fd, err := createPidFile(filename, runtimeDir)
 		if err != nil {
 			panic(err)
 		}
 		defer removePidFile(fd)
-		role.Run(localMsg, kafka, svrAlias)
+		role.Run(localMsg, svrAlias)
 	case "stop":
 		if err := stopPid(filename, runtimeDir); err != nil {
 			fmt.Fprintf(os.Stderr, "%s\n\n", err.Error())

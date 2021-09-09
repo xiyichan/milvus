@@ -129,7 +129,12 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		dataCoordClient:         node.dataCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(cct)
+	log.Debug("CreateCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.Any("schema", request.Schema))
+	err := node.sched.ddQueue.Enqueue(cct)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -179,7 +184,11 @@ func (node *Proxy) DropCollection(ctx context.Context, request *milvuspb.DropCol
 		chTicker:              node.chTicker,
 	}
 
-	err := node.sched.DdQueue.Enqueue(dct)
+	log.Debug("DropCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(dct)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -227,7 +236,11 @@ func (node *Proxy) HasCollection(ctx context.Context, request *milvuspb.HasColle
 		rootCoord:            node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(hct)
+	log.Debug("HasCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(hct)
 	if err != nil {
 		return &milvuspb.BoolResponse{
 			Status: &commonpb.Status{
@@ -277,7 +290,11 @@ func (node *Proxy) LoadCollection(ctx context.Context, request *milvuspb.LoadCol
 		queryCoord:            node.queryCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(lct)
+	log.Debug("LoadCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(lct)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -324,7 +341,11 @@ func (node *Proxy) ReleaseCollection(ctx context.Context, request *milvuspb.Rele
 		chMgr:                    node.chMgr,
 	}
 
-	err := node.sched.DdQueue.Enqueue(rct)
+	log.Debug("ReleaseCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(rct)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -372,7 +393,11 @@ func (node *Proxy) DescribeCollection(ctx context.Context, request *milvuspb.Des
 		rootCoord:                 node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(dct)
+	log.Debug("DescribeCollection enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(dct)
 	if err != nil {
 		return &milvuspb.DescribeCollectionResponse{
 			Status: &commonpb.Status{
@@ -424,7 +449,11 @@ func (node *Proxy) GetCollectionStatistics(ctx context.Context, request *milvusp
 		dataCoord:                      node.dataCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(g)
+	log.Debug("GetCollectionStatistics enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName))
+	err := node.sched.ddQueue.Enqueue(g)
 	if err != nil {
 		return &milvuspb.GetCollectionStatisticsResponse{
 			Status: &commonpb.Status{
@@ -477,7 +506,10 @@ func (node *Proxy) ShowCollections(ctx context.Context, request *milvuspb.ShowCo
 		rootCoord:              node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(sct)
+	log.Debug("ShowCollections enqueue",
+		zap.String("role", Params.RoleName),
+		zap.Any("request", request))
+	err := node.sched.ddQueue.Enqueue(sct)
 	if err != nil {
 		return &milvuspb.ShowCollectionsResponse{
 			Status: &commonpb.Status{
@@ -523,7 +555,12 @@ func (node *Proxy) CreatePartition(ctx context.Context, request *milvuspb.Create
 		result:                 nil,
 	}
 
-	err := node.sched.DdQueue.Enqueue(cpt)
+	log.Debug("CreatePartition enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName))
+	err := node.sched.ddQueue.Enqueue(cpt)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -571,8 +608,12 @@ func (node *Proxy) DropPartition(ctx context.Context, request *milvuspb.DropPart
 		result:               nil,
 	}
 
-	err := node.sched.DdQueue.Enqueue(dpt)
-
+	log.Debug("DropPartition enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName))
+	err := node.sched.ddQueue.Enqueue(dpt)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -622,8 +663,12 @@ func (node *Proxy) HasPartition(ctx context.Context, request *milvuspb.HasPartit
 		result:              nil,
 	}
 
-	err := node.sched.DdQueue.Enqueue(hpt)
-
+	log.Debug("HasPartition enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName))
+	err := node.sched.ddQueue.Enqueue(hpt)
 	if err != nil {
 		return &milvuspb.BoolResponse{
 			Status: &commonpb.Status{
@@ -676,7 +721,12 @@ func (node *Proxy) LoadPartitions(ctx context.Context, request *milvuspb.LoadPar
 		queryCoord:            node.queryCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(lpt)
+	log.Debug("LoadPartitions enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.Any("partitions", request.PartitionNames))
+	err := node.sched.ddQueue.Enqueue(lpt)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -724,7 +774,12 @@ func (node *Proxy) ReleasePartitions(ctx context.Context, request *milvuspb.Rele
 		queryCoord:               node.queryCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(rpt)
+	log.Debug("ReleasePartitions enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.Any("partitions", request.PartitionNames))
+	err := node.sched.ddQueue.Enqueue(rpt)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -774,7 +829,12 @@ func (node *Proxy) GetPartitionStatistics(ctx context.Context, request *milvuspb
 		dataCoord:                     node.dataCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(g)
+	log.Debug("GetPartitionStatistics enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName))
+	err := node.sched.ddQueue.Enqueue(g)
 	if err != nil {
 		return &milvuspb.GetPartitionStatisticsResponse{
 			Status: &commonpb.Status{
@@ -830,8 +890,10 @@ func (node *Proxy) ShowPartitions(ctx context.Context, request *milvuspb.ShowPar
 		result:                nil,
 	}
 
-	err := node.sched.DdQueue.Enqueue(spt)
-
+	log.Debug("ShowPartitions enqueue",
+		zap.String("role", Params.RoleName),
+		zap.Any("request", request))
+	err := node.sched.ddQueue.Enqueue(spt)
 	if err != nil {
 		return &milvuspb.ShowPartitionsResponse{
 			Status: &commonpb.Status{
@@ -875,7 +937,13 @@ func (node *Proxy) CreateIndex(ctx context.Context, request *milvuspb.CreateInde
 		rootCoord:          node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(cit)
+	log.Debug("CreateIndex enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("field", request.FieldName),
+		zap.Any("extra_params", request.ExtraParams))
+	err := node.sched.ddQueue.Enqueue(cit)
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -927,7 +995,13 @@ func (node *Proxy) DescribeIndex(ctx context.Context, request *milvuspb.Describe
 		rootCoord:            node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(dit)
+	log.Debug("DescribeIndex enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("field", request.FieldName),
+		zap.String("index name", request.IndexName))
+	err := node.sched.ddQueue.Enqueue(dit)
 	if err != nil {
 		return &milvuspb.DescribeIndexResponse{
 			Status: &commonpb.Status{
@@ -984,7 +1058,15 @@ func (node *Proxy) DropIndex(ctx context.Context, request *milvuspb.DropIndexReq
 		DropIndexRequest: request,
 		rootCoord:        node.rootCoord,
 	}
-	err := node.sched.DdQueue.Enqueue(dit)
+
+	log.Debug("DropIndex enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("field", request.FieldName),
+		zap.String("index name", request.IndexName))
+	err := node.sched.ddQueue.Enqueue(dit)
+
 	if err != nil {
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -1039,7 +1121,13 @@ func (node *Proxy) GetIndexBuildProgress(ctx context.Context, request *milvuspb.
 		dataCoord:                    node.dataCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(gibpt)
+	log.Debug("GetIndexBuildProgress enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("field", request.FieldName),
+		zap.String("index name", request.IndexName))
+	err := node.sched.ddQueue.Enqueue(gibpt)
 	if err != nil {
 		return &milvuspb.GetIndexBuildProgressResponse{
 			Status: &commonpb.Status{
@@ -1098,7 +1186,13 @@ func (node *Proxy) GetIndexState(ctx context.Context, request *milvuspb.GetIndex
 		rootCoord:            node.rootCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(dipt)
+	log.Debug("GetIndexState enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("field", request.FieldName),
+		zap.String("index name", request.IndexName))
+	err := node.sched.ddQueue.Enqueue(dipt)
 	if err != nil {
 		return &milvuspb.GetIndexStateResponse{
 			Status: &commonpb.Status{
@@ -1171,28 +1265,7 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 		chMgr:          node.chMgr,
 		chTicker:       node.chTicker,
 	}
-	if len(it.PartitionName) <= 0 {
-		it.PartitionName = Params.DefaultPartitionName
-	}
-
-	result := &milvuspb.MutationResult{
-		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
-		},
-	}
-	err := node.sched.DmQueue.Enqueue(it)
-
-	if err != nil {
-		result.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
-		result.Status.Reason = err.Error()
-		numRows := it.req.NumRows
-		errIndex := make([]uint32, numRows)
-		for i := uint32(0); i < numRows; i++ {
-			errIndex[i] = i
-		}
-		result.ErrIndex = errIndex
-		return result, nil
-	}
+	var err error
 
 	log.Debug("Insert",
 		zap.String("role", Params.RoleName),
@@ -1203,6 +1276,7 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 		zap.String("partition", request.PartitionName),
 		zap.Any("len(RowData)", len(it.RowData)),
 		zap.Any("len(RowIDs)", len(it.RowIDs)))
+
 	defer func() {
 		log.Debug("Insert Done",
 			zap.Error(err),
@@ -1215,6 +1289,39 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 			zap.Any("len(RowData)", len(it.RowData)),
 			zap.Any("len(RowIDs)", len(it.RowIDs)))
 	}()
+
+	if len(it.PartitionName) <= 0 {
+		it.PartitionName = Params.DefaultPartitionName
+	}
+
+	result := &milvuspb.MutationResult{
+		Status: &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_Success,
+		},
+	}
+	err = node.sched.dmQueue.Enqueue(it)
+
+	log.Debug("Insert Task Enqueue",
+		zap.Int64("msgID", it.BaseInsertTask.InsertRequest.Base.MsgID),
+		zap.Uint64("timestamp", it.BaseInsertTask.InsertRequest.Base.Timestamp),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName),
+		zap.Any("len(RowData)", len(it.RowData)),
+		zap.Any("len(RowIDs)", len(it.RowIDs)),
+	)
+
+	if err != nil {
+		result.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
+		result.Status.Reason = err.Error()
+		numRows := it.req.NumRows
+		errIndex := make([]uint32, numRows)
+		for i := uint32(0); i < numRows; i++ {
+			errIndex[i] = i
+		}
+		result.ErrIndex = errIndex
+		return result, nil
+	}
 
 	err = it.WaitToFinish()
 	if err != nil {
@@ -1240,6 +1347,68 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 	return it.result, nil
 }
 
+func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) (*milvuspb.MutationResult, error) {
+	if !node.checkHealthy() {
+		return &milvuspb.MutationResult{
+			Status: unhealthyStatus(),
+		}, nil
+	}
+
+	dt := &DeleteTask{
+		ctx:           ctx,
+		Condition:     NewTaskCondition(ctx),
+		DeleteRequest: request,
+	}
+
+	log.Debug("Delete enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName),
+		zap.String("expr", request.Expr))
+	err := node.sched.dmQueue.Enqueue(dt)
+	if err != nil {
+		return &milvuspb.MutationResult{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	log.Debug("Delete",
+		zap.String("role", Params.RoleName),
+		zap.Int64("msgID", dt.Base.MsgID),
+		zap.Uint64("timestamp", dt.Base.Timestamp),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.String("partition", request.PartitionName),
+		zap.String("expr", request.Expr))
+	defer func() {
+		log.Debug("Delete Done",
+			zap.Error(err),
+			zap.String("role", Params.RoleName),
+			zap.Int64("msgID", dt.Base.MsgID),
+			zap.Uint64("timestamp", dt.Base.Timestamp),
+			zap.String("db", request.DbName),
+			zap.String("collection", request.CollectionName),
+			zap.String("partition", request.PartitionName),
+			zap.String("expr", request.Expr))
+	}()
+
+	err = dt.WaitToFinish()
+	if err != nil {
+		return &milvuspb.MutationResult{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	return dt.result, nil
+}
+
 func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
 	if !node.checkHealthy() {
 		return &milvuspb.SearchResults{
@@ -1262,7 +1431,15 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		qc:        node.queryCoord,
 	}
 
-	err := node.sched.DqQueue.Enqueue(qt)
+	log.Debug("Search enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.String("collection", request.CollectionName),
+		zap.Any("partitions", request.PartitionNames),
+		zap.Any("dsl", request.Dsl),
+		zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
+		zap.Any("OutputFields", request.OutputFields))
+	err := node.sched.dqQueue.Enqueue(qt)
 	if err != nil {
 		return &milvuspb.SearchResults{
 			Status: &commonpb.Status{
@@ -1338,7 +1515,11 @@ func (node *Proxy) Flush(ctx context.Context, request *milvuspb.FlushRequest) (*
 		dataCoord:    node.dataCoord,
 	}
 
-	err := node.sched.DdQueue.Enqueue(ft)
+	log.Debug("Flush enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", request.DbName),
+		zap.Any("collections", request.CollectionNames))
+	err := node.sched.ddQueue.Enqueue(ft)
 	if err != nil {
 		resp.Status.Reason = err.Error()
 		return resp, nil
@@ -1400,7 +1581,13 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 		qc:        node.queryCoord,
 	}
 
-	err := node.sched.DqQueue.Enqueue(qt)
+	log.Debug("Query enqueue",
+		zap.String("role", Params.RoleName),
+		zap.String("db", queryRequest.DbName),
+		zap.String("collection", queryRequest.CollectionName),
+		zap.Any("partitions", queryRequest.PartitionNames))
+
+	err := node.sched.dqQueue.Enqueue(qt)
 	if err != nil {
 		return &milvuspb.QueryResults{
 			Status: &commonpb.Status{
@@ -1473,16 +1660,16 @@ func (node *Proxy) CalcDistance(ctx context.Context, request *milvuspb.CalcDista
 					MsgType:  commonpb.MsgType_Retrieve,
 					SourceID: Params.ProxyID,
 				},
-				Ids:             ids.IdArray,
 				ResultChannelID: strconv.FormatInt(Params.ProxyID, 10),
 			},
 			resultBuf: make(chan []*internalpb.RetrieveResults),
 			query:     queryRequest,
 			chMgr:     node.chMgr,
 			qc:        node.queryCoord,
+			ids:       ids.IdArray,
 		}
 
-		err := node.sched.DqQueue.Enqueue(qt)
+		err := node.sched.dqQueue.Enqueue(qt)
 		if err != nil {
 			return &milvuspb.QueryResults{
 				Status: &commonpb.Status{
@@ -1969,7 +2156,7 @@ func (node *Proxy) RegisterLink(ctx context.Context, req *milvuspb.RegisterLinkR
 		Address: nil,
 		Status: &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_Success,
-			Reason:    os.Getenv("DEPLOY_MODE"),
+			Reason:    os.Getenv(metricsinfo.DeployModeEnvKey),
 		},
 	}, nil
 }
@@ -2015,6 +2202,13 @@ func (node *Proxy) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsReque
 		zap.String("metric_type", metricType))
 
 	if metricType == metricsinfo.SystemInfoMetrics {
+		ret, err := node.metricsCacheManager.GetSystemInfoMetrics()
+		if err == nil && ret != nil {
+			return ret, nil
+		}
+		log.Debug("failed to get system info metrics from cache, recompute instead",
+			zap.Error(err))
+
 		metrics, err := getSystemInfoMetrics(ctx, req, node)
 
 		log.Debug("Proxy.GetMetrics",
@@ -2023,6 +2217,8 @@ func (node *Proxy) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsReque
 			zap.String("metric_type", metricType),
 			zap.Any("metrics", metrics), // TODO(dragondriver): necessary? may be very large
 			zap.Error(err))
+
+		node.metricsCacheManager.UpdateSystemInfoMetrics(metrics)
 
 		return metrics, err
 	}

@@ -21,6 +21,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+
 	"github.com/milvus-io/milvus/cmd/components"
 	"github.com/milvus-io/milvus/internal/datacoord"
 	"github.com/milvus-io/milvus/internal/datanode"
@@ -38,12 +40,12 @@ import (
 	"github.com/milvus-io/milvus/internal/util/trace"
 )
 
-func newMsgFactory(localMsg bool, rocksmqPath string) msgstream.Factory {
+func newMsgFactory(localMsg bool) msgstream.Factory {
 	if localMsg {
-		return msgstream.NewRmsFactory(rocksmqPath)
+		//return msgstream.NewRmsFactory()
+		return msgstream.NewKmsFactory()
 	}
-	return msgstream.NewKmsFactory()
-	//return msgstream.NewPmsFactory()
+	return msgstream.NewPmsFactory()
 }
 
 type MilvusRoles struct {
@@ -88,7 +90,7 @@ func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool) *compone
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, rootcoord.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg)
 		var err error
 		rc, err = components.NewRootCoord(ctx, factory)
 		if err != nil {
@@ -117,7 +119,7 @@ func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, proxy.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg)
 		var err error
 		pn, err = components.NewProxy(ctx, factory)
 		if err != nil {
@@ -145,9 +147,7 @@ func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *compon
 			defer log.Sync()
 		}
 
-		// FIXME(yukun): newMsgFactory requires parameter rocksmqPath, but won't be used here
-		// so hardcode the path to /tmp/invalid_milvus_rdb
-		factory := newMsgFactory(localMsg, "/tmp/invalid_milvus_rdb")
+		factory := newMsgFactory(localMsg)
 		var err error
 		qs, err = components.NewQueryCoord(ctx, factory)
 		if err != nil {
@@ -176,7 +176,7 @@ func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias st
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, querynode.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg)
 		var err error
 		qn, err = components.NewQueryNode(ctx, factory)
 		if err != nil {
@@ -204,7 +204,7 @@ func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool) *compone
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, datacoord.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg)
 		var err error
 		ds, err = components.NewDataCoord(ctx, factory)
 		if err != nil {
@@ -233,7 +233,7 @@ func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool, alias str
 			defer log.Sync()
 		}
 
-		factory := newMsgFactory(localMsg, datanode.Params.RocksmqPath)
+		factory := newMsgFactory(localMsg)
 		var err error
 		dn, err = components.NewDataNode(ctx, factory)
 		if err != nil {
@@ -324,7 +324,7 @@ func (mr *MilvusRoles) runMsgStreamCoord(ctx context.Context) *components.MsgStr
 }
 
 func (mr *MilvusRoles) Run(localMsg bool, alias string) {
-	if os.Getenv("DEPLOY_MODE") == "STANDALONE" {
+	if os.Getenv(metricsinfo.DeployModeEnvKey) == metricsinfo.StandaloneDeployMode {
 		closer := trace.InitTracing("standalone")
 		if closer != nil {
 			defer closer.Close()
@@ -335,10 +335,15 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 
 	// only standalone enable localMsg
 	if localMsg {
-		os.Setenv("DEPLOY_MODE", "STANDALONE")
+		os.Setenv(metricsinfo.DeployModeEnvKey, metricsinfo.StandaloneDeployMode)
 		cfg := mr.setLogConfigFilename("standalone.log")
 		logutil.SetupLogger(cfg)
 		defer log.Sync()
+	} else {
+		err := os.Setenv(metricsinfo.DeployModeEnvKey, metricsinfo.ClusterDeployMode)
+		if err != nil {
+			fmt.Println("failed to set deploy mode: ", err)
+		}
 	}
 
 	var rc *components.RootCoord

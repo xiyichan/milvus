@@ -31,17 +31,22 @@ const (
 type ParamTable struct {
 	paramtable.BaseTable
 
-	NetworkPort    int
-	IP             string
+	// NetworkPort & IP are not used
+	NetworkPort int
+	IP          string
+
 	NetworkAddress string
-	Alias          string
+
+	// TODO(dragondriver): maybe using the Proxy + ProxyID as the alias is more reasonable
+	Alias string
 
 	EtcdEndpoints    []string
 	MetaRootPath     string
 	RootCoordAddress string
 	PulsarAddress    string
-	KafkaAddress     string
-	RocksmqPath      string
+
+	RocksmqPath  string // not used in Proxy
+	KafkaAddress string
 
 	ProxyID                    UniqueID
 	TimeTickInterval           time.Duration
@@ -80,7 +85,6 @@ func (pt *ParamTable) initParams() {
 	pt.initEtcdEndpoints()
 	pt.initMetaRootPath()
 	pt.initPulsarAddress()
-	pt.initKafkaAddress()
 	pt.initRocksmqPath()
 	pt.initTimeTickInterval()
 	pt.initProxySubName()
@@ -108,6 +112,7 @@ func (pt *ParamTable) initPulsarAddress() {
 	pt.PulsarAddress = ret
 }
 
+//new_kafka
 func (pt *ParamTable) initKafkaAddress() {
 	ret, err := pt.Load("_KafkaAddress")
 	if err != nil {

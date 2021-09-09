@@ -179,6 +179,7 @@ func (p *ParamTable) initPulsarAddress() {
 	p.PulsarAddress = url
 }
 
+//new_kafka
 func (p *ParamTable) initKafkaAddress() {
 	url, err := p.Load("_KafkaAddress")
 	if err != nil {

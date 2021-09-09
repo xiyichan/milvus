@@ -14,12 +14,15 @@ package rootcoord
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"path"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 
 	"github.com/golang/protobuf/proto"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -40,7 +43,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/stretchr/testify/assert"
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type proxyMock struct {
@@ -63,6 +66,13 @@ func (p *proxyMock) GetCollArray() []string {
 	ret := make([]string, 0, len(p.collArray))
 	ret = append(ret, p.collArray...)
 	return ret
+}
+
+func (p *proxyMock) ReleaseDQLMessageStream(ctx context.Context, request *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error) {
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+		Reason:    "",
+	}, nil
 }
 
 type dataMock struct {
@@ -269,6 +279,7 @@ func TestRootCoord(t *testing.T) {
 	Params.MetaRootPath = fmt.Sprintf("/%d/%s", randVal, Params.MetaRootPath)
 	Params.KvRootPath = fmt.Sprintf("/%d/%s", randVal, Params.KvRootPath)
 	Params.MsgChannelSubName = fmt.Sprintf("subname-%d", randVal)
+	Params.DmlChannelName = fmt.Sprintf("dml-%d", randVal)
 
 	err = core.Register()
 	assert.Nil(t, err)
@@ -324,7 +335,6 @@ func TestRootCoord(t *testing.T) {
 
 	m := map[string]interface{}{
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"receiveBufSize": 1024,
 		"pulsarBufSize":  1024}
 	err = tmpFactory.SetParams(m)
@@ -410,16 +420,16 @@ func TestRootCoord(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
 
-		assert.Equal(t, 2, len(core.dmlChannels.dml))
+		assert.Equal(t, 2, core.dmlChannels.GetNumChannels())
 
 		pChan := core.MetaTable.ListCollectionPhysicalChannels()
 		dmlStream.AsConsumer([]string{pChan[0]}, Params.MsgChannelSubName)
 		dmlStream.Start()
 
 		// get CreateCollectionMsg
-		msgPack, ok := <-dmlStream.Chan()
-		assert.True(t, ok)
-		createMsg, ok := (msgPack.Msgs[0]).(*msgstream.CreateCollectionMsg)
+		msgs := getNotTtMsg(ctx, 1, dmlStream.Chan())
+		assert.Equal(t, 1, len(msgs))
+		createMsg, ok := (msgs[0]).(*msgstream.CreateCollectionMsg)
 		assert.True(t, ok)
 		createMeta, err := core.MetaTable.GetCollectionByName(collName, 0)
 		assert.Nil(t, err)
@@ -499,6 +509,9 @@ func TestRootCoord(t *testing.T) {
 		status, err = core.CreateCollection(ctx, req)
 		assert.Nil(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
+
+		err = core.reSendDdMsg(core.ctx, true)
+		assert.Nil(t, err)
 	})
 
 	t.Run("has collection", func(t *testing.T) {
@@ -638,6 +651,9 @@ func TestRootCoord(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
 		assert.Equal(t, collMeta.PartitionIDs[1], ddReq.PartitionID)
+
+		err = core.reSendDdMsg(core.ctx, true)
+		assert.NotNil(t, err)
 	})
 
 	t.Run("has partition", func(t *testing.T) {
@@ -970,6 +986,25 @@ func TestRootCoord(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
 		assert.Equal(t, dropPartID, ddReq.PartitionID)
+
+		err = core.reSendDdMsg(core.ctx, true)
+		assert.NotNil(t, err)
+	})
+
+	t.Run("remove DQL msgstream", func(t *testing.T) {
+		collMeta, err := core.MetaTable.GetCollectionByName(collName, 0)
+		assert.Nil(t, err)
+
+		req := &proxypb.ReleaseDQLMessageStreamRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:  commonpb.MsgType_RemoveQueryChannels,
+				SourceID: core.session.ServerID,
+			},
+			CollectionID: collMeta.ID,
+		}
+		status, err := core.ReleaseDQLMessageStream(core.ctx, req)
+		assert.Nil(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
 	})
 
 	t.Run("drop collection", func(t *testing.T) {
@@ -1040,6 +1075,9 @@ func TestRootCoord(t *testing.T) {
 		err = proto.UnmarshalText(ddOp.Body, &ddReq)
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
+
+		err = core.reSendDdMsg(core.ctx, true)
+		assert.NotNil(t, err)
 	})
 
 	t.Run("context_cancel", func(t *testing.T) {
@@ -1414,7 +1452,6 @@ func TestRootCoord(t *testing.T) {
 		p1 := sessionutil.Session{
 			ServerID: 100,
 		}
-
 		p2 := sessionutil.Session{
 			ServerID: 101,
 		}
@@ -1425,13 +1462,18 @@ func TestRootCoord(t *testing.T) {
 		s2, err := json.Marshal(&p2)
 		assert.Nil(t, err)
 
-		_, err = core.etcdCli.Put(ctx2, path.Join(sessKey, typeutil.ProxyRole)+"-1", string(s1))
+		proxy1 := path.Join(sessKey, typeutil.ProxyRole) + "-1"
+		proxy2 := path.Join(sessKey, typeutil.ProxyRole) + "-2"
+		_, err = core.etcdCli.Put(ctx2, proxy1, string(s1))
 		assert.Nil(t, err)
-		_, err = core.etcdCli.Put(ctx2, path.Join(sessKey, typeutil.ProxyRole)+"-2", string(s2))
+		_, err = core.etcdCli.Put(ctx2, proxy2, string(s2))
 		assert.Nil(t, err)
 		time.Sleep(100 * time.Millisecond)
 
-		core.dmlChannels.AddProducerChannels("c0", "c1", "c2")
+		cn0 := core.dmlChannels.GetDmlMsgStreamName()
+		cn1 := core.dmlChannels.GetDmlMsgStreamName()
+		cn2 := core.dmlChannels.GetDmlMsgStreamName()
+		core.dmlChannels.AddProducerChannels(cn0, cn1, cn2)
 
 		msg0 := &internalpb.ChannelTimeTickMsg{
 			Base: &commonpb.MsgBase{
@@ -1475,6 +1517,55 @@ func TestRootCoord(t *testing.T) {
 
 		// add 3 proxy channels
 		assert.Equal(t, 3, core.chanTimeTick.GetChanNum()-numChan)
+
+		_, err = core.etcdCli.Delete(ctx2, proxy1)
+		assert.Nil(t, err)
+		_, err = core.etcdCli.Delete(ctx2, proxy2)
+		assert.Nil(t, err)
+	})
+
+	t.Run("get metrics", func(t *testing.T) {
+		// not healthy
+		stateSave := core.stateCode.Load().(internalpb.StateCode)
+		core.UpdateStateCode(internalpb.StateCode_Abnormal)
+		resp, err := core.GetMetrics(ctx, &milvuspb.GetMetricsRequest{})
+		assert.Nil(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+		core.UpdateStateCode(stateSave)
+
+		// failed to parse metric type
+		invalidRequest := "invalid request"
+		resp, err = core.GetMetrics(ctx, &milvuspb.GetMetricsRequest{
+			Request: invalidRequest,
+		})
+		assert.Nil(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+
+		// unsupported metric type
+		unsupportedMetricType := "unsupported"
+		req, err := metricsinfo.ConstructRequestByMetricType(unsupportedMetricType)
+		assert.Nil(t, err)
+		resp, err = core.GetMetrics(ctx, req)
+		assert.Nil(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+
+		// normal case
+		systemInfoMetricType := metricsinfo.SystemInfoMetrics
+		req, err = metricsinfo.ConstructRequestByMetricType(systemInfoMetricType)
+		assert.Nil(t, err)
+		resp, err = core.GetMetrics(ctx, req)
+		assert.Nil(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+	})
+
+	t.Run("get system info", func(t *testing.T) {
+		// normal case
+		systemInfoMetricType := metricsinfo.SystemInfoMetrics
+		req, err := metricsinfo.ConstructRequestByMetricType(systemInfoMetricType)
+		assert.Nil(t, err)
+		resp, err := core.getSystemInfoMetrics(ctx, req)
+		assert.Nil(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
 
 	err = core.Stop()
@@ -1738,7 +1829,6 @@ func TestRootCoord2(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -1910,4 +2000,158 @@ func TestCheckInit(t *testing.T) {
 	}
 	err = c.checkInit()
 	assert.Nil(t, err)
+}
+
+func TestCheckFlushedSegments(t *testing.T) {
+	const (
+		dbName   = "testDb"
+		collName = "testColl"
+		partName = "testPartition"
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	msFactory := msgstream.NewPmsFactory()
+	Params.Init()
+	core, err := NewCore(ctx, msFactory)
+	assert.Nil(t, err)
+	randVal := rand.Int()
+
+	Params.TimeTickChannel = fmt.Sprintf("rootcoord-time-tick-%d", randVal)
+	Params.StatisticsChannel = fmt.Sprintf("rootcoord-statistics-%d", randVal)
+	Params.MetaRootPath = fmt.Sprintf("/%d/%s", randVal, Params.MetaRootPath)
+	Params.KvRootPath = fmt.Sprintf("/%d/%s", randVal, Params.KvRootPath)
+	Params.MsgChannelSubName = fmt.Sprintf("subname-%d", randVal)
+
+	err = core.Register()
+	assert.Nil(t, err)
+
+	dm := &dataMock{randVal: randVal}
+	err = core.SetDataCoord(ctx, dm)
+	assert.Nil(t, err)
+
+	im := &indexMock{
+		fileArray:  []string{},
+		idxBuildID: []int64{},
+		idxID:      []int64{},
+		idxDropID:  []int64{},
+		mutex:      sync.Mutex{},
+	}
+	err = core.SetIndexCoord(im)
+	assert.Nil(t, err)
+
+	qm := &queryMock{
+		collID: nil,
+		mutex:  sync.Mutex{},
+	}
+	err = core.SetQueryCoord(qm)
+	assert.Nil(t, err)
+
+	core.NewProxyClient = func(*sessionutil.Session) (types.Proxy, error) {
+		return nil, nil
+	}
+
+	err = core.Init()
+	assert.Nil(t, err)
+
+	err = core.Start()
+	assert.Nil(t, err)
+
+	m := map[string]interface{}{
+		"receiveBufSize": 1024,
+		"pulsarAddress":  Params.PulsarAddress,
+		"pulsarBufSize":  1024}
+	err = msFactory.SetParams(m)
+	assert.Nil(t, err)
+
+	timeTickStream, _ := msFactory.NewMsgStream(ctx)
+	timeTickStream.AsConsumer([]string{Params.TimeTickChannel}, Params.MsgChannelSubName)
+	timeTickStream.Start()
+
+	time.Sleep(100 * time.Millisecond)
+	t.Run("check flushed segments", func(t *testing.T) {
+		ctx := context.Background()
+		var collID int64 = 1
+		var partID int64 = 2
+		var segID int64 = 1001
+		var fieldID int64 = 101
+		var indexID int64 = 6001
+		core.MetaTable.segID2IndexMeta[segID] = make(map[int64]etcdpb.SegmentIndexInfo)
+		core.MetaTable.partID2SegID[partID] = make(map[int64]bool)
+		core.MetaTable.collID2Meta[collID] = etcdpb.CollectionInfo{ID: collID}
+		// do nothing, since collection has 0 index
+		core.checkFlushedSegments(ctx)
+
+		// get field schema by id fail
+		core.MetaTable.collID2Meta[collID] = etcdpb.CollectionInfo{
+			ID:           collID,
+			PartitionIDs: []int64{partID},
+			FieldIndexes: []*etcdpb.FieldIndexInfo{
+				{
+					FiledID: fieldID,
+					IndexID: indexID,
+				},
+			},
+			Schema: &schemapb.CollectionSchema{
+				Fields: []*schemapb.FieldSchema{},
+			},
+		}
+		core.checkFlushedSegments(ctx)
+
+		// fail to get segment id ,dont panic
+		core.CallGetFlushedSegmentsService = func(_ context.Context, collID, partID int64) ([]int64, error) {
+			return []int64{}, errors.New("service not available")
+		}
+		core.checkFlushedSegments(core.ctx)
+		// non-exist segID
+		core.CallGetFlushedSegmentsService = func(_ context.Context, collID, partID int64) ([]int64, error) {
+			return []int64{2001}, nil
+		}
+		core.checkFlushedSegments(core.ctx)
+
+		// missing index info
+		core.MetaTable.collID2Meta[collID] = etcdpb.CollectionInfo{
+			ID:           collID,
+			PartitionIDs: []int64{partID},
+			FieldIndexes: []*etcdpb.FieldIndexInfo{
+				{
+					FiledID: fieldID,
+					IndexID: indexID,
+				},
+			},
+			Schema: &schemapb.CollectionSchema{
+				Fields: []*schemapb.FieldSchema{
+					{
+						FieldID: fieldID,
+					},
+				},
+			},
+		}
+		core.checkFlushedSegments(ctx)
+		// existing segID, buildIndex failed
+		core.CallGetFlushedSegmentsService = func(_ context.Context, cid, pid int64) ([]int64, error) {
+			assert.Equal(t, collID, cid)
+			assert.Equal(t, partID, pid)
+			return []int64{segID}, nil
+		}
+		core.MetaTable.indexID2Meta[indexID] = etcdpb.IndexInfo{
+			IndexID: indexID,
+		}
+		core.CallBuildIndexService = func(_ context.Context, binlog []string, field *schemapb.FieldSchema, idx *etcdpb.IndexInfo) (int64, error) {
+			assert.Equal(t, fieldID, field.FieldID)
+			assert.Equal(t, indexID, idx.IndexID)
+			return -1, errors.New("build index build")
+		}
+
+		core.checkFlushedSegments(ctx)
+
+		var indexBuildID int64 = 10001
+		core.CallBuildIndexService = func(_ context.Context, binlog []string, field *schemapb.FieldSchema, idx *etcdpb.IndexInfo) (int64, error) {
+			return indexBuildID, nil
+		}
+		core.checkFlushedSegments(core.ctx)
+
+	})
+
 }

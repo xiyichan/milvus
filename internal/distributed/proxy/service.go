@@ -138,8 +138,11 @@ func (s *Server) init() error {
 
 	proxy.Params.Init()
 	log.Debug("init params done ...")
+
+	// NetworkPort & IP don't matter here, NetworkAddress matters
 	proxy.Params.NetworkPort = Params.Port
 	proxy.Params.IP = Params.IP
+
 	proxy.Params.NetworkAddress = Params.Address
 	// for purpose of ID Allocator
 	proxy.Params.RootCoordAddress = Params.RootCoordAddress
@@ -368,6 +371,10 @@ func (s *Server) GetIndexState(ctx context.Context, request *milvuspb.GetIndexSt
 
 func (s *Server) Insert(ctx context.Context, request *milvuspb.InsertRequest) (*milvuspb.MutationResult, error) {
 	return s.proxy.Insert(ctx, request)
+}
+
+func (s *Server) Delete(ctx context.Context, request *milvuspb.DeleteRequest) (*milvuspb.MutationResult, error) {
+	return s.proxy.Delete(ctx, request)
 }
 
 func (s *Server) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {

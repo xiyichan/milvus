@@ -515,7 +515,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
     @pytest.mark.parametrize("index, params",
                              zip(ct.all_index_types[:9],
                                  ct.default_index_params[:9]))
-    def test_search_different_index_invalid_params(self, nq, dim, index, params, auto_id, _async):
+    def test_search_different_index_invalid_params(self, index, params):
         """
         target: test search with different index
         method: test search with different index
@@ -524,13 +524,11 @@ class TestCollectionSearchInvalid(TestcaseBase):
         # 1. initialize with data
         collection_w, _, _, insert_ids = self.init_collection_general(prefix, True, 5000,
                                                                       partition_num=1,
-                                                                      auto_id=auto_id,
-                                                                      dim=dim, is_index=True)
-        vectors = [[random.random() for _ in range(dim)] for _ in range(nq)]
+                                                                      is_index=True)
         # 2. create different index
         if params.get("m"):
-            if (dim % params["m"]) != 0:
-                params["m"] = dim//4
+            if (default_dim % params["m"]) != 0:
+                params["m"] = default_dim//4
         log.info("test_search_different_index_invalid_params: Creating index-%s" % index)
         default_index = {"index_type": index, "params": params, "metric_type": "L2"}
         collection_w.create_index("float_vector", default_index)
@@ -538,14 +536,13 @@ class TestCollectionSearchInvalid(TestcaseBase):
         collection_w.load()
         # 3. search
         log.info("test_search_different_index_invalid_params: Searching after creating index-%s" % index)
-        collection_w.search(vectors[:nq], default_search_field,
+        collection_w.search(vectors, default_search_field,
                             default_search_params, default_limit,
-                            default_search_exp, _async=_async,
+                            default_search_exp,
                             check_task=CheckTasks.check_search_results,
-                            check_items={"nq": nq,
+                            check_items={"nq": default_nq,
                                          "ids": insert_ids,
-                                         "limit": default_limit,
-                                         "_async": _async})
+                                         "limit": default_limit})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_search_index_partition_not_existed(self):
@@ -1402,7 +1399,8 @@ class TestCollectionSearch(TestcaseBase):
                                          "_async": _async})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_search_binary_jaccard_flat_index(self, nq, dim, auto_id, _async):
+    @pytest.mark.parametrize("index", ["BIN_FLAT", "BIN_IVF_FLAT"])
+    def test_search_binary_jaccard_flat_index(self, nq, dim, auto_id, _async, index):
         """
         target: search binary_collection, and check the result: distance
         method: compare the return distance value with value computed with JACCARD
@@ -1415,7 +1413,7 @@ class TestCollectionSearch(TestcaseBase):
                                                                                       dim=dim,
                                                                                       is_index=True)
         # 2. create index
-        default_index = {"index_type": "BIN_IVF_FLAT", "params": {"nlist": 128}, "metric_type": "JACCARD"}
+        default_index = {"index_type": index, "params": {"nlist": 128}, "metric_type": "JACCARD"}
         collection_w.create_index("binary_vector", default_index)
         collection_w.load()
         # 3. compute the distance
@@ -1438,7 +1436,8 @@ class TestCollectionSearch(TestcaseBase):
         assert abs(res[0]._distances[0] - min(distance_0, distance_1)) <= epsilon
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_search_binary_hamming_flat_index(self, nq, dim, auto_id, _async):
+    @pytest.mark.parametrize("index", ["BIN_FLAT", "BIN_IVF_FLAT"])
+    def test_search_binary_hamming_flat_index(self, nq, dim, auto_id, _async, index):
         """
         target: search binary_collection, and check the result: distance
         method: compare the return distance value with value computed with HAMMING
@@ -1451,7 +1450,7 @@ class TestCollectionSearch(TestcaseBase):
                                                                                       dim=dim,
                                                                                       is_index=True)
         # 2. create index
-        default_index = {"index_type": "BIN_IVF_FLAT", "params": {"nlist": 128}, "metric_type": "HAMMING"}
+        default_index = {"index_type": index, "params": {"nlist": 128}, "metric_type": "HAMMING"}
         collection_w.create_index("binary_vector", default_index)
         # 3. compute the distance
         collection_w.load()
@@ -1475,7 +1474,8 @@ class TestCollectionSearch(TestcaseBase):
 
     @pytest.mark.tags(CaseLabel.L2)
     @pytest.mark.xfail(reason="issue 6843")
-    def test_search_binary_tanimoto_flat_index(self, nq, dim, auto_id, _async):
+    @pytest.mark.parametrize("index", ["BIN_FLAT", "BIN_IVF_FLAT"])
+    def test_search_binary_tanimoto_flat_index(self, nq, dim, auto_id, _async, index):
         """
         target: search binary_collection, and check the result: distance
         method: compare the return distance value with value computed with TANIMOTO
@@ -1489,7 +1489,7 @@ class TestCollectionSearch(TestcaseBase):
                                                                                       is_index=True)
         log.info("auto_id= %s, _async= %s" % (auto_id, _async))
         # 2. create index
-        default_index = {"index_type": "BIN_IVF_FLAT", "params": {"nlist": 128}, "metric_type": "TANIMOTO"}
+        default_index = {"index_type": index, "params": {"nlist": 128}, "metric_type": "TANIMOTO"}
         collection_w.create_index("binary_vector", default_index)
         collection_w.load()
         # 3. compute the distance
@@ -1512,10 +1512,8 @@ class TestCollectionSearch(TestcaseBase):
         assert abs(res[0]._distances[0] - min(distance_0, distance_1)) <= epsilon
 
     @pytest.mark.tags(CaseLabel.L1)
-    @pytest.mark.parametrize("expression, limit",
-                             zip(cf.gen_normal_expressions(),
-                                 [1000, 999, 898, 997, 2, 3]))
-    def test_search_with_expression(self, dim, expression, limit, _async):
+    @pytest.mark.parametrize("expression", cf.gen_normal_expressions())
+    def test_search_with_expression(self, dim, expression, _async):
         """
         target: test search with different expressions
         method: test search with different expressions
@@ -1523,30 +1521,48 @@ class TestCollectionSearch(TestcaseBase):
         """
         # 1. initialize with data
         nb = 1000
-        collection_w, _, _, insert_ids = self.init_collection_general(prefix, True,
-                                                                      nb, dim=dim,
-                                                                      is_index=True)
+        collection_w, _vectors, _, insert_ids = self.init_collection_general(prefix, True,
+                                                                             nb, dim=dim,
+                                                                             is_index=True)
+
+        # filter result with expression in collection
+        _vectors = _vectors[0]
+        expression = expression.replace("&&", "and").replace("||", "or")
+        filter_ids = []
+        for i, _id in enumerate(insert_ids):
+            int64 = _vectors.int64[i]
+            float = _vectors.float[i]
+            if not expression or eval(expression):
+                filter_ids.append(_id)
+        
         # 2. create index
         index_param = {"index_type": "IVF_FLAT", "metric_type": "L2", "params": {"nlist": 100}}
         collection_w.create_index("float_vector", index_param)
         collection_w.load()
-        # 3. search with different expressions
+
+        # 3. search with expression
         log.info("test_search_with_expression: searching with expression: %s" % expression)
         vectors = [[random.random() for _ in range(dim)] for _ in range(default_nq)]
-        collection_w.search(vectors[:default_nq], default_search_field,
-                            default_search_params, nb, expression,
-                            _async=_async,
-                            check_task=CheckTasks.check_search_results,
-                            check_items={"nq": default_nq,
-                                         "ids": insert_ids,
-                                         "limit": limit,
-                                         "_async": _async})
+        search_res, _ = collection_w.search(vectors[:default_nq], default_search_field,
+                                            default_search_params, nb, expression,
+                                            _async=_async,
+                                            check_task=CheckTasks.check_search_results,
+                                            check_items={"nq": default_nq,
+                                                         "ids": insert_ids,
+                                                         "limit": min(nb, len(filter_ids)),
+                                                         "_async": _async})
+        if _async:
+            search_res.done()
+            search_res = search_res.result()
+        
+        filter_ids_set = set(filter_ids)
+        for hits in search_res:
+            ids = hits.ids
+            assert set(ids).issubset(filter_ids_set)
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.parametrize("expression, limit",
-                             zip(cf.gen_normal_expressions_field(default_float_field_name),
-                                 [1000, 999, 898, 997, 2, 3]))
-    def test_search_with_expression_auto_id(self, dim, expression, limit, _async):
+    @pytest.mark.parametrize("expression", cf.gen_normal_expressions_field(default_float_field_name))
+    def test_search_with_expression_auto_id(self, dim, expression, _async):
         """
         target: test search with different expressions
         method: test search with different expressions
@@ -1554,25 +1570,46 @@ class TestCollectionSearch(TestcaseBase):
         """
         # 1. initialize with data
         nb = 1000
-        collection_w, _, _, insert_ids = self.init_collection_general(prefix, True, nb,
-                                                                      auto_id=True,
-                                                                      dim=dim,
-                                                                      is_index=True)
+        collection_w, _vectors, _, insert_ids = self.init_collection_general(prefix, True, nb,
+                                                                             auto_id=True,
+                                                                             dim=dim,
+                                                                             is_index=True)
+        
+        
+        # filter result with expression in collection
+        _vectors = _vectors[0]
+        expression = expression.replace("&&", "and").replace("||", "or")
+        filter_ids = []
+        for i, _id in enumerate(insert_ids):
+            exec(f"{default_float_field_name} = _vectors.{default_float_field_name}[i]")
+            if not expression or eval(expression):
+                filter_ids.append(_id)
+        
         # 2. create index
         index_param = {"index_type": "IVF_FLAT", "metric_type": "L2", "params": {"nlist": 100}}
         collection_w.create_index("float_vector", index_param)
         collection_w.load()
+
+
         # 3. search with different expressions
         log.info("test_search_with_expression: searching with expression: %s" % expression)
         vectors = [[random.random() for _ in range(dim)] for _ in range(default_nq)]
-        collection_w.search(vectors[:default_nq], default_search_field,
-                            default_search_params, nb, expression,
-                            _async=_async,
-                            check_task=CheckTasks.check_search_results,
-                            check_items={"nq": default_nq,
-                                         "ids": insert_ids,
-                                         "limit": limit,
-                                         "_async": _async})
+        search_res, _ = collection_w.search(vectors[:default_nq], default_search_field,
+                                            default_search_params, nb, expression,
+                                            _async=_async,
+                                            check_task=CheckTasks.check_search_results,
+                                            check_items={"nq": default_nq,
+                                                         "ids": insert_ids,
+                                                         "limit": min(nb, len(filter_ids)),
+                                                         "_async": _async})
+        if _async:
+            search_res.done()
+            search_res = search_res.result()
+        
+        filter_ids_set = set(filter_ids)
+        for hits in search_res:
+            ids = hits.ids
+            assert set(ids).issubset(filter_ids_set)        
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_search_expression_all_data_type(self, nb, nq, dim, auto_id, _async):

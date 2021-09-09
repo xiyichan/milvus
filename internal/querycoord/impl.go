@@ -548,6 +548,13 @@ func (qc *QueryCoord) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRe
 		zap.String("metric_type", metricType))
 
 	if metricType == metricsinfo.SystemInfoMetrics {
+		ret, err := qc.metricsCacheManager.GetSystemInfoMetrics()
+		if err == nil && ret != nil {
+			return ret, nil
+		}
+		log.Debug("failed to get system info metrics from cache, recompute instead",
+			zap.Error(err))
+
 		metrics, err := getSystemInfoMetrics(ctx, req, qc)
 
 		log.Debug("QueryCoord.GetMetrics",
@@ -557,9 +564,10 @@ func (qc *QueryCoord) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRe
 			zap.Any("metrics", metrics), // TODO(dragondriver): necessary? may be very large
 			zap.Error(err))
 
+		qc.metricsCacheManager.UpdateSystemInfoMetrics(metrics)
+
 		return metrics, err
 	}
-
 	log.Debug("QueryCoord.GetMetrics failed, request metric type is not implemented yet",
 		zap.Int64("node_id", Params.QueryCoordID),
 		zap.String("req", req.Request),

@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+
 	"github.com/milvus-io/milvus/internal/metrics"
 
 	"go.uber.org/zap"
@@ -61,7 +63,7 @@ type Proxy struct {
 
 	chMgr channelsMgr
 
-	sched *TaskScheduler
+	sched *taskScheduler
 	tick  *timeTick
 
 	chTicker channelsTimeTicker
@@ -69,6 +71,8 @@ type Proxy struct {
 	idAllocator  *allocator.IDAllocator
 	tsoAllocator *TimestampAllocator
 	segAssigner  *SegIDAssigner
+
+	metricsCacheManager *metricsinfo.MetricsCacheManager
 
 	session *sessionutil.Session
 
@@ -157,20 +161,20 @@ func (node *Proxy) Init() error {
 
 	m := map[string]interface{}{
 		"PulsarAddress": Params.PulsarAddress,
+		"PulsarBufSize": 1024,
 		"KafkaAddress":  Params.KafkaAddress,
-		"PulsarBufSize": 1024}
+		"KafkaBufSize":  1024}
 	err := node.msFactory.SetParams(m)
 	if err != nil {
 		return err
 	}
 
-	idAllocator, err := allocator.NewIDAllocator(node.ctx, Params.MetaRootPath, Params.EtcdEndpoints)
-
+	idAllocator, err := allocator.NewIDAllocator(node.ctx, node.rootCoord, Params.ProxyID)
 	if err != nil {
 		return err
 	}
+
 	node.idAllocator = idAllocator
-	node.idAllocator.PeerID = Params.ProxyID
 
 	tsoAllocator, err := NewTimestampAllocator(node.ctx, node.rootCoord, Params.ProxyID)
 	if err != nil {
@@ -251,10 +255,10 @@ func (node *Proxy) Init() error {
 		return m, nil
 	}
 
-	chMgr := newChannelsMgr(getDmlChannelsFunc, defaultInsertRepackFunc, getDqlChannelsFunc, nil, node.msFactory)
+	chMgr := newChannelsMgrImpl(getDmlChannelsFunc, defaultInsertRepackFunc, getDqlChannelsFunc, nil, node.msFactory)
 	node.chMgr = chMgr
 
-	node.sched, err = NewTaskScheduler(node.ctx, node.idAllocator, node.tsoAllocator, node.msFactory)
+	node.sched, err = newTaskScheduler(node.ctx, node.idAllocator, node.tsoAllocator, node.msFactory)
 	if err != nil {
 		return err
 	}
@@ -262,6 +266,8 @@ func (node *Proxy) Init() error {
 	node.tick = newTimeTick(node.ctx, node.tsoAllocator, time.Millisecond*200, node.sched.TaskDoneTest, node.msFactory)
 
 	node.chTicker = newChannelsTimeTicker(node.ctx, channelMgrTickerInterval, []string{}, node.sched.getPChanStatistics, tsoAllocator)
+
+	node.metricsCacheManager = metricsinfo.NewMetricsCacheManager()
 
 	return nil
 }

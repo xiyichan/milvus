@@ -163,6 +163,16 @@ class MilvusClient(object):
             logger.error(str(e))
         self._milvus.flush([tmp_collection_name], _async=_async)
 
+    @time_wrapper
+    def insert_flush(self, entities, _async=False, collection_name=None):
+        tmp_collection_name = self._collection_name if collection_name is None else collection_name
+        try:
+            insert_res = self._milvus.insert(tmp_collection_name, entities)
+            return insert_res.primary_keys
+        except Exception as e:
+            logger.error(str(e))
+        self._milvus.flush([tmp_collection_name], _async=_async)
+
     def get_dimension(self):
         info = self.get_info()
         for field in info["fields"]:

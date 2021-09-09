@@ -14,6 +14,7 @@ package msgstream
 import (
 	"context"
 	"github.com/Shopify/sarama"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/milvus-io/milvus/internal/util/mqclient"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
@@ -136,7 +137,7 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance(f.KafkaAddress, config)
+	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
 	if err != nil {
 		return nil, err
 	}
@@ -155,13 +156,21 @@ func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 }
 
 func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
+	//config := sarama.NewConfig()
+	//config.Version = sarama.V2_8_0_0
+	//config.Producer.Return.Successes = true
+	//kafkaClient, err := mqclient.GetKafkaClientInstance([]string{"47.106.76.166:9092"}, config)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 	return f.NewMsgStream(ctx)
 }
 func NewKmsFactory() Factory {
 	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
-		ReceiveBufSize:    64,
-		KafkaBufSize:      64,
+		ReceiveBufSize:    1024,
+		KafkaBufSize:      1024,
 	}
 	return f
 }

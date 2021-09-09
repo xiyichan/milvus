@@ -136,7 +136,7 @@ func (t *CreateCollectionReqTask) Execute(ctx context.Context) error {
 	vchanNames := make([]string, t.Req.ShardsNum)
 	chanNames := make([]string, t.Req.ShardsNum)
 	for i := int32(0); i < t.Req.ShardsNum; i++ {
-		vchanNames[i] = fmt.Sprintf("%s_%d_%d_v", t.Req.CollectionName, collID, i)
+		vchanNames[i] = fmt.Sprintf("%s_%dv", t.core.dmlChannels.GetDmlMsgStreamName(), collID)
 		chanNames[i] = ToPhysicalChannel(vchanNames[i])
 	}
 
@@ -286,10 +286,8 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		t.core.chanTimeTick.RemoveDdlTimeTick(ts, reason)
 		t.core.SendTimeTick(ts, reason)
 
-		for _, chanName := range collMeta.PhysicalChannelNames {
-			// send tt into deleted channels to tell data_node to clear flowgragh
-			t.core.chanTimeTick.SendChannelTimeTick(chanName, ts)
-		}
+		// send tt into deleted channels to tell data_node to clear flowgragh
+		t.core.chanTimeTick.SendTimeTickToChannel(collMeta.PhysicalChannelNames, ts)
 
 		// remove dml channel after send dd msg
 		t.core.dmlChannels.RemoveProducerChannels(collMeta.PhysicalChannelNames...)
@@ -796,7 +794,7 @@ func (t *CreateIndexReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	segIDs, field, err := t.core.MetaTable.GetNotIndexedSegments(t.Req.CollectionName, t.Req.FieldName, idxInfo, flushedSegs)
+	segIDs, field, err := t.core.MetaTable.GetNotIndexedSegments(t.Req.CollectionName, t.Req.FieldName, idxInfo, flushedSegs, t.Req.Base.GetTimestamp())
 	if err != nil {
 		log.Debug("RootCoord CreateIndexReqTask metaTable.GetNotIndexedSegments", zap.Error(err))
 		return err

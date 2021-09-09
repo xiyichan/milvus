@@ -37,7 +37,7 @@ type ParamTable struct {
 
 	// --- Pulsar ---
 	PulsarAddress string
-
+	//new_kafka
 	// --- Kafka ---
 	KafkaAddress string
 
@@ -115,6 +115,7 @@ func (p *ParamTable) initPulsarAddress() {
 	p.PulsarAddress = addr
 }
 
+//new_kafka
 func (p *ParamTable) initKafkaAddress() {
 	addr, err := p.Load("_KafkaAddress")
 	if err != nil {
