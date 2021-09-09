@@ -116,15 +116,15 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 				//	return
 				//
 				//}
-				_, ok := <-kc.closeCh
-				if !ok {
-					//close(kc.closeClaim)
-					//等所有协程claim退出在退出for
-					log.Info("关闭线程")
-
-					//kc.wg.Done()
-					break
-				}
+				//_, ok := <-kc.closeCh
+				//if !ok {
+				//	//close(kc.closeClaim)
+				//	//等所有协程claim退出在退出for
+				//	log.Info("关闭线程")
+				//
+				//	//kc.wg.Done()
+				//	break
+				//}
 
 			}
 		}()
