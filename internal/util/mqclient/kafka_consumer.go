@@ -24,12 +24,14 @@ type kafkaConsumer struct {
 }
 
 func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
+	kc.wg.Add(1)
 	log.Info("setup")
 	return nil
 }
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	log.Info("Clean up")
 	//所有claim推出之后 关闭msgChan
+	kc.wg.Done()
 	close(kc.msgChannel)
 
 	return nil
@@ -176,9 +178,8 @@ func (kc *kafkaConsumer) Close() {
 	kc.lock.Lock()
 	close(kc.closeCh)
 	log.Info("关闭信号")
-	//kc.wg.Wait()
+	kc.wg.Wait()
 	log.Info("协程所有关闭")
-	//	kc.wg.Wait()
 	err := kc.g.Close()
 	if err != nil {
 		log.Error("err", zap.Any("err", err))
