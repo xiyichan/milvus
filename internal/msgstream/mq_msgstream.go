@@ -302,11 +302,13 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 
 func (ms *mqMsgStream) Consume() *MsgPack {
 	for {
+		log.Info("111111")
 		select {
 		case <-ms.ctx.Done():
 			//log.Debug("context closed")
 			return nil
 		case cm, ok := <-ms.receiveBuf:
+			log.Info("2222")
 			if !ok {
 				log.Debug("buf chan closed")
 				return nil
