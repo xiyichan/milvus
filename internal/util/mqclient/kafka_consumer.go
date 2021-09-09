@@ -64,12 +64,12 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//	break
 		//}
 		//收到了关闭的请求,所有协程都得退出
-		_, ok := <-kc.closeCh
-		if !ok {
-			//close(kc.closeClaim)
-			log.Info("关闭协程")
-			break
-		}
+		//_, ok := <-kc.closeCh
+		//if !ok {
+		//	//close(kc.closeClaim)
+		//	log.Info("关闭协程")
+		//	break
+		//}
 	}
 	kc.wg.Done()
 	return nil
