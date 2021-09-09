@@ -51,11 +51,12 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		log.Info("receive msg", zap.Any("msg", msg.Value))
 
 		//收到了关闭的请求,所有协程都得退出
-		_, ok := <-kc.closeCh
-		if !ok {
-			log.Info("关闭协程")
-			break
-		}
+		//	_, ok := <-kc.closeCh
+		//	if !ok {
+		//		log.Info("关闭协程")
+		//		break
+		//	}
+
 	}
 	kc.wg.Done()
 	log.Info("关闭协程")
@@ -95,14 +96,7 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Info("ctx err", zap.Any("ctx", ctx.Err()))
 					return
 				}
-				//select {
-				//case <-kc.closeCh:
-				//	log.Info("consumer close")
-				//
-				//	kc.wg.Done()
-				//	return
-				//
-				//}
+
 				//_, ok := <-kc.closeCh
 				//if !ok {
 				//	//close(kc.closeClaim)
