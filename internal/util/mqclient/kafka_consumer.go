@@ -30,7 +30,7 @@ func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	log.Info("Clean up")
 	//所有claim推出之后 关闭msgChan
-	close(kc.msgChannel)
+	//close(kc.msgChannel)
 	log.Info("close kc.msgChannel")
 	//close(kc.closeCh)
 	log.Info("close kc.closeCh")
@@ -40,38 +40,16 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 }
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
-
 	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
-
-	//kc.wg.Add(1)
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
 		log.Info("receive msg", zap.Any("msg", msg.Value))
 		//fmt.Println(string(msg.Value))
-		//if len(claim.Messages()) == 0 {
-		//	log.Info("close msgChannel success")
-		//	close(kc.msgChannel)
-		//	//close(kc.end)
-		//	break
-		//}
 
-		//_,ok:= <-kc.closeClaim
-		//if !ok{
-		//	log.Info("clos msgChannel success")
-		//	close(kc.msgChannel)
-		//	break
-		//}
-		//收到了关闭的请求,所有协程都得退出
-		//_, ok := <-kc.closeCh
-		//if !ok {
-		//	//close(kc.closeClaim)
-		//	log.Info("关闭协程")
-		//	break
-		//}
 	}
-	//kc.wg.Done()
+
 	return nil
 }
 
@@ -108,21 +86,13 @@ func (kc *kafkaConsumer) Chan() <-chan ConsumerMessage {
 					log.Info("ctx err", zap.Any("ctx", ctx.Err()))
 					return
 				}
-				//select {
-				//case <-kc.closeCh:
-				//	log.Info("consumer close")
-				//
-				//	kc.wg.Done()
-				//	return
-				//
-				//}
 				_, ok := <-kc.closeCh
 				if !ok {
 					//close(kc.closeClaim)
 					//等所有协程claim退出在退出for
 					log.Info("关闭线程")
-
 					//kc.wg.Done()
+					close(kc.msgChannel)
 					break
 				}
 
