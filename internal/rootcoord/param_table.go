@@ -30,6 +30,7 @@ type ParamTable struct {
 	Port    int
 
 	PulsarAddress     string
+	KafkaAddress      string
 	EtcdEndpoints     []string
 	MetaRootPath      string
 	KvRootPath        string

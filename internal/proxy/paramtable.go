@@ -44,8 +44,8 @@ type ParamTable struct {
 	MetaRootPath     string
 	RootCoordAddress string
 	PulsarAddress    string
-
-	RocksmqPath string // not used in Proxy
+	KafkaAddress     string
+	RocksmqPath      string // not used in Proxy
 
 	ProxyID                    UniqueID
 	TimeTickInterval           time.Duration
@@ -115,6 +115,14 @@ func (pt *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	pt.PulsarAddress = ret
+}
+
+func (pt *ParamTable) initKafkaAddress() {
+	ret, err := pt.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	pt.KafkaAddress = ret
 }
 
 func (pt *ParamTable) initRocksmqPath() {

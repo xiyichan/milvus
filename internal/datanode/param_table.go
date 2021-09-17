@@ -40,6 +40,9 @@ type ParamTable struct {
 	// --- Pulsar ---
 	PulsarAddress string
 
+	// --- Kafka ---
+	KafkaAddress string
+
 	// --- Rocksmq ---
 	RocksmqPath string
 
@@ -151,6 +154,14 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = url
+}
+
+func (p *ParamTable) initKafkaAddress() {
+	url, err := p.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	p.KafkaAddress = url
 }
 
 func (p *ParamTable) initRocksmqPath() {
