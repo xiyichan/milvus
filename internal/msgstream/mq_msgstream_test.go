@@ -22,8 +22,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/milvus-io/milvus/internal/allocator"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -33,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	client "github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
+	"github.com/stretchr/testify/assert"
 )
 
 var Params paramtable.BaseTable
