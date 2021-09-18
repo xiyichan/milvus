@@ -2,11 +2,12 @@ package mqclient
 
 import (
 	"errors"
+	"strconv"
+	"sync"
+
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
-	"strconv"
-	"sync"
 )
 
 type kafkaClient struct {

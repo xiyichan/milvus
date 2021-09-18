@@ -2,6 +2,7 @@ package mqclient
 
 import (
 	"context"
+
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"

@@ -2,6 +2,7 @@ package mqclient
 
 import (
 	"encoding/binary"
+
 	"github.com/Shopify/sarama"
 )
 
