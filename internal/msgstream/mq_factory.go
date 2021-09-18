@@ -16,10 +16,11 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/mitchellh/mapstructure"
+
 	"github.com/milvus-io/milvus/internal/util/mqclient"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
 	rocksmqserver "github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
-	"github.com/mitchellh/mapstructure"
 )
 
 type PmsFactory struct {
