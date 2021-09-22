@@ -80,6 +80,7 @@ gtags.conf
 go_coverage.txt
 profile.out
 go_coverage.html
+cover.out
 
 # codecov-cpp generated files
 lcov_*.info
