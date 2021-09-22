@@ -14,12 +14,16 @@ package roles
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path"
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/milvus-io/milvus/internal/util/healthz"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 
@@ -98,6 +102,9 @@ func (mr *MilvusRoles) runRootCoord(ctx context.Context, localMsg bool) *compone
 		}
 		wg.Done()
 		_ = rc.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: rc})
+		}
 	}()
 	wg.Wait()
 
@@ -127,6 +134,9 @@ func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string
 		}
 		wg.Done()
 		_ = pn.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: pn})
+		}
 	}()
 	wg.Wait()
 
@@ -155,6 +165,9 @@ func (mr *MilvusRoles) runQueryCoord(ctx context.Context, localMsg bool) *compon
 		}
 		wg.Done()
 		_ = qs.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: qs})
+		}
 	}()
 	wg.Wait()
 
@@ -184,6 +197,9 @@ func (mr *MilvusRoles) runQueryNode(ctx context.Context, localMsg bool, alias st
 		}
 		wg.Done()
 		_ = qn.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: qn})
+		}
 	}()
 	wg.Wait()
 
@@ -212,6 +228,9 @@ func (mr *MilvusRoles) runDataCoord(ctx context.Context, localMsg bool) *compone
 		}
 		wg.Done()
 		_ = ds.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: ds})
+		}
 	}()
 	wg.Wait()
 
@@ -241,6 +260,9 @@ func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool, alias str
 		}
 		wg.Done()
 		_ = dn.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: dn})
+		}
 	}()
 	wg.Wait()
 
@@ -268,6 +290,9 @@ func (mr *MilvusRoles) runIndexCoord(ctx context.Context, localMsg bool) *compon
 		}
 		wg.Done()
 		_ = is.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: is})
+		}
 	}()
 	wg.Wait()
 
@@ -296,6 +321,9 @@ func (mr *MilvusRoles) runIndexNode(ctx context.Context, localMsg bool, alias st
 		}
 		wg.Done()
 		_ = in.Run()
+		if !localMsg {
+			http.Handle(healthz.HealthzRouterPath, &componentsHealthzHandler{component: in})
+		}
 	}()
 	wg.Wait()
 
@@ -416,6 +444,39 @@ func (mr *MilvusRoles) Run(localMsg bool, alias string) {
 		if mss != nil {
 			defer mss.Stop()
 		}
+	}
+
+	if localMsg {
+		standaloneHealthzHandler := func(w http.ResponseWriter, r *http.Request) {
+			if rc == nil {
+				rootCoordNotServingHandler(w, r)
+				return
+			}
+			if qs == nil {
+				queryCoordNotServingHandler(w, r)
+				return
+			}
+			if ds == nil {
+				dataCoordNotServingHandler(w, r)
+				return
+			}
+			if is == nil {
+				indexCoordNotServingHandler(w, r)
+				return
+			}
+			// TODO(dragondriver): need to check node state?
+
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set(healthz.ContentTypeHeader, healthz.ContentTypeText)
+			_, err := fmt.Fprint(w, "OK")
+			if err != nil {
+				log.Warn("failed to send response",
+					zap.Error(err))
+			}
+
+			// TODO(dragondriver): handle component states
+		}
+		http.HandleFunc(healthz.HealthzRouterPath, standaloneHealthzHandler)
 	}
 
 	metrics.ServeHTTP()
