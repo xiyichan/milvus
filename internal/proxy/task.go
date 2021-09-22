@@ -27,6 +27,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/milvus-io/milvus/internal/util/trace"
+
 	"github.com/milvus-io/milvus/internal/common"
 
 	"go.uber.org/zap"
