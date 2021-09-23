@@ -27,6 +27,9 @@ type descriptorEventData struct {
 	ExtraBytes        []byte
 	Extras            map[string]interface{}
 	PostHeaderLengths []uint8
+	ExtraLength       int32
+	ExtraBytes        []byte
+	Extras            map[string]interface{}
 }
 
 // DescriptorEventDataFixPart is a memorty struct saves events' DescriptorEventData.
