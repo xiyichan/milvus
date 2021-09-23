@@ -56,7 +56,7 @@ import (
 
 // DdOperation used to save ddMsg into ETCD
 type DdOperation struct {
-	Body string `json:"body"`
+	Body []byte `json:"body"`
 	Type string `json:"type"`
 }
 
@@ -1010,7 +1010,7 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 	switch ddOp.Type {
 	case CreateCollectionDDType:
 		var ddReq = internalpb.CreateCollectionRequest{}
-		if err = proto.UnmarshalText(ddOp.Body, &ddReq); err != nil {
+		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0)
@@ -1023,7 +1023,7 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 		invalidateCache = false
 	case DropCollectionDDType:
 		var ddReq = internalpb.DropCollectionRequest{}
-		if err = proto.UnmarshalText(ddOp.Body, &ddReq); err != nil {
+		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp
@@ -1038,7 +1038,7 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 		invalidateCache = true
 	case CreatePartitionDDType:
 		var ddReq = internalpb.CreatePartitionRequest{}
-		if err = proto.UnmarshalText(ddOp.Body, &ddReq); err != nil {
+		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp
@@ -1056,7 +1056,7 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 		invalidateCache = true
 	case DropPartitionDDType:
 		var ddReq = internalpb.DropPartitionRequest{}
-		if err = proto.UnmarshalText(ddOp.Body, &ddReq); err != nil {
+		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp

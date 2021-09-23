@@ -731,7 +731,7 @@ func TestRootCoord(t *testing.T) {
 		assert.Equal(t, CreateCollectionDDType, ddOp.Type)
 
 		var ddCollReq = internalpb.CreateCollectionRequest{}
-		err = proto.UnmarshalText(ddOp.Body, &ddCollReq)
+		err = proto.Unmarshal(ddOp.Body, &ddCollReq)
 		assert.Nil(t, err)
 		assert.Equal(t, createMeta.ID, ddCollReq.CollectionID)
 		assert.Equal(t, createMeta.PartitionIDs[0], ddCollReq.PartitionID)
@@ -901,7 +901,7 @@ func TestRootCoord(t *testing.T) {
 		assert.Equal(t, CreatePartitionDDType, ddOp.Type)
 
 		var ddReq = internalpb.CreatePartitionRequest{}
-		err = proto.UnmarshalText(ddOp.Body, &ddReq)
+		err = proto.Unmarshal(ddOp.Body, &ddReq)
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
 		assert.Equal(t, collMeta.PartitionIDs[1], ddReq.PartitionID)
@@ -1236,7 +1236,7 @@ func TestRootCoord(t *testing.T) {
 		assert.Equal(t, DropPartitionDDType, ddOp.Type)
 
 		var ddReq = internalpb.DropPartitionRequest{}
-		err = proto.UnmarshalText(ddOp.Body, &ddReq)
+		err = proto.Unmarshal(ddOp.Body, &ddReq)
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
 		assert.Equal(t, dropPartID, ddReq.PartitionID)
@@ -1326,7 +1326,7 @@ func TestRootCoord(t *testing.T) {
 		assert.Equal(t, DropCollectionDDType, ddOp.Type)
 
 		var ddReq = internalpb.DropCollectionRequest{}
-		err = proto.UnmarshalText(ddOp.Body, &ddReq)
+		err = proto.Unmarshal(ddOp.Body, &ddReq)
 		assert.Nil(t, err)
 		assert.Equal(t, collMeta.ID, ddReq.CollectionID)
 
