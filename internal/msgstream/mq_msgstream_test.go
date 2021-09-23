@@ -20,8 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/milvus-io/milvus/internal/allocator"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -31,7 +32,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	client "github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
 	"github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
-	"github.com/stretchr/testify/assert"
 )
 
 var Params paramtable.BaseTable
@@ -40,257 +40,6 @@ func TestMain(m *testing.M) {
 	Params.Init()
 	exitCode := m.Run()
 	os.Exit(exitCode)
-}
-
-func repackFunc(msgs []TsMsg, hashKeys [][]int32) (map[int32]*MsgPack, error) {
-	result := make(map[int32]*MsgPack)
-	for i, request := range msgs {
-		keys := hashKeys[i]
-		for _, channelID := range keys {
-			_, ok := result[channelID]
-			if ok == false {
-				msgPack := MsgPack{}
-				result[channelID] = &msgPack
-			}
-			result[channelID].Msgs = append(result[channelID].Msgs, request)
-		}
-	}
-	return result, nil
-}
-
-func getTsMsg(msgType MsgType, reqID UniqueID) TsMsg {
-	hashValue := uint32(reqID)
-	time := uint64(reqID)
-	baseMsg := BaseMsg{
-		BeginTimestamp: 0,
-		EndTimestamp:   0,
-		HashValues:     []uint32{hashValue},
-	}
-	switch msgType {
-	case commonpb.MsgType_Insert:
-		insertRequest := internalpb.InsertRequest{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_Insert,
-				MsgID:     reqID,
-				Timestamp: time,
-				SourceID:  reqID,
-			},
-			CollectionName: "Collection",
-			PartitionName:  "Partition",
-			SegmentID:      1,
-			ChannelID:      "0",
-			Timestamps:     []Timestamp{time},
-			RowIDs:         []int64{1},
-			RowData:        []*commonpb.Blob{{}},
-		}
-		insertMsg := &InsertMsg{
-			BaseMsg:       baseMsg,
-			InsertRequest: insertRequest,
-		}
-		return insertMsg
-	case commonpb.MsgType_Delete:
-		deleteRequest := internalpb.DeleteRequest{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_Delete,
-				MsgID:     reqID,
-				Timestamp: 11,
-				SourceID:  reqID,
-			},
-			CollectionName: "Collection",
-			ChannelID:      "1",
-			Timestamps:     []Timestamp{1},
-			PrimaryKeys:    []IntPrimaryKey{1},
-		}
-		deleteMsg := &DeleteMsg{
-			BaseMsg:       baseMsg,
-			DeleteRequest: deleteRequest,
-		}
-		return deleteMsg
-	case commonpb.MsgType_Search:
-		searchRequest := internalpb.SearchRequest{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_Search,
-				MsgID:     reqID,
-				Timestamp: 11,
-				SourceID:  reqID,
-			},
-			ResultChannelID: "0",
-		}
-		searchMsg := &SearchMsg{
-			BaseMsg:       baseMsg,
-			SearchRequest: searchRequest,
-		}
-		return searchMsg
-	case commonpb.MsgType_SearchResult:
-		searchResult := internalpb.SearchResults{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_SearchResult,
-				MsgID:     reqID,
-				Timestamp: 1,
-				SourceID:  reqID,
-			},
-			Status:          &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
-			ResultChannelID: "0",
-		}
-		searchResultMsg := &SearchResultMsg{
-			BaseMsg:       baseMsg,
-			SearchResults: searchResult,
-		}
-		return searchResultMsg
-	case commonpb.MsgType_TimeTick:
-		timeTickResult := internalpb.TimeTickMsg{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_TimeTick,
-				MsgID:     reqID,
-				Timestamp: 1,
-				SourceID:  reqID,
-			},
-		}
-		timeTickMsg := &TimeTickMsg{
-			BaseMsg:     baseMsg,
-			TimeTickMsg: timeTickResult,
-		}
-		return timeTickMsg
-	case commonpb.MsgType_QueryNodeStats:
-		queryNodeSegStats := internalpb.QueryNodeStats{
-			Base: &commonpb.MsgBase{
-				MsgType:  commonpb.MsgType_QueryNodeStats,
-				SourceID: reqID,
-			},
-		}
-		queryNodeSegStatsMsg := &QueryNodeStatsMsg{
-			BaseMsg:        baseMsg,
-			QueryNodeStats: queryNodeSegStats,
-		}
-		return queryNodeSegStatsMsg
-	}
-	return nil
-}
-
-func getTimeTickMsg(reqID UniqueID) TsMsg {
-	hashValue := uint32(reqID)
-	time := uint64(reqID)
-	baseMsg := BaseMsg{
-		BeginTimestamp: 0,
-		EndTimestamp:   0,
-		HashValues:     []uint32{hashValue},
-	}
-	timeTickResult := internalpb.TimeTickMsg{
-		Base: &commonpb.MsgBase{
-			MsgType:   commonpb.MsgType_TimeTick,
-			MsgID:     reqID,
-			Timestamp: time,
-			SourceID:  reqID,
-		},
-	}
-	timeTickMsg := &TimeTickMsg{
-		BaseMsg:     baseMsg,
-		TimeTickMsg: timeTickResult,
-	}
-	return timeTickMsg
-}
-
-// Generate MsgPack contains 'num' msgs, with timestamp in (start, end)
-func getRandInsertMsgPack(num int, start int, end int) *MsgPack {
-	Rand := rand.New(rand.NewSource(time.Now().UnixNano()))
-	set := make(map[int]bool)
-	msgPack := MsgPack{}
-	for len(set) < num {
-		reqID := Rand.Int()%(end-start-1) + start + 1
-		_, ok := set[reqID]
-		if !ok {
-			set[reqID] = true
-			msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, int64(reqID)))
-		}
-	}
-	return &msgPack
-}
-
-func getInsertMsgPack(ts []int) *MsgPack {
-	msgPack := MsgPack{}
-	for i := 0; i < len(ts); i++ {
-		msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, int64(ts[i])))
-	}
-	return &msgPack
-}
-
-func getTimeTickMsgPack(reqID UniqueID) *MsgPack {
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTimeTickMsg(reqID))
-	return &msgPack
-}
-
-func getPulsarInputStream(pulsarAddress string, producerChannels []string, opts ...RepackFunc) MsgStream {
-	factory := ProtoUDFactory{}
-	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
-	inputStream.AsProducer(producerChannels)
-	for _, opt := range opts {
-		inputStream.SetRepackFunc(opt)
-	}
-	inputStream.Start()
-	return inputStream
-}
-
-func getPulsarOutputStream(pulsarAddress string, consumerChannels []string, consumerSubName string) MsgStream {
-	factory := ProtoUDFactory{}
-	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
-	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
-	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	outputStream.Start()
-	return outputStream
-}
-
-func getPulsarTtOutputStream(pulsarAddress string, consumerChannels []string, consumerSubName string) MsgStream {
-	factory := ProtoUDFactory{}
-	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
-	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
-	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	outputStream.Start()
-	return outputStream
-}
-
-func getPulsarTtOutputStreamAndSeek(pulsarAddress string, positions []*MsgPosition) MsgStream {
-	factory := ProtoUDFactory{}
-	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
-	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
-	consumerName := []string{}
-	for _, c := range positions {
-		consumerName = append(consumerName, c.ChannelName)
-	}
-	outputStream.AsConsumer(consumerName, positions[0].MsgGroup)
-	outputStream.Seek(positions)
-	outputStream.Start()
-	return outputStream
-}
-
-func receiveMsg(outputStream MsgStream, msgCount int) {
-	receiveCount := 0
-	for {
-		result := outputStream.Consume()
-		if len(result.Msgs) > 0 {
-			msgs := result.Msgs
-			for _, v := range msgs {
-				receiveCount++
-				log.Println("msg type: ", v.Type(), ", msg value: ", v)
-			}
-			log.Println("================")
-		}
-		if receiveCount >= msgCount {
-			break
-		}
-	}
-}
-
-func printMsgPack(msgPack *MsgPack) {
-	if msgPack == nil {
-		log.Println("msg nil")
-	} else {
-		for _, v := range msgPack.Msgs {
-			log.Println("msg type: ", v.Type(), ", msg value: ", v)
-		}
-	}
-	log.Println("================")
 }
 
 func TestStream_PulsarMsgStream_Insert(t *testing.T) {
@@ -1157,18 +906,189 @@ func TestStream_RmqTtMsgStream_Insert(t *testing.T) {
 	Close(rocksdbName, inputStream, outputStream, etcdKV)
 }
 
-/****************************************Kafka test******************************************/
-func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts ...RepackFunc) MsgStream {
+/* ========================== Utility functions ========================== */
+func repackFunc(msgs []TsMsg, hashKeys [][]int32) (map[int32]*MsgPack, error) {
+	result := make(map[int32]*MsgPack)
+	for i, request := range msgs {
+		keys := hashKeys[i]
+		for _, channelID := range keys {
+			_, ok := result[channelID]
+			if ok == false {
+				msgPack := MsgPack{}
+				result[channelID] = &msgPack
+			}
+			result[channelID].Msgs = append(result[channelID].Msgs, request)
+		}
+	}
+	return result, nil
+}
+
+func getTsMsg(msgType MsgType, reqID UniqueID) TsMsg {
+	hashValue := uint32(reqID)
+	time := uint64(reqID)
+	baseMsg := BaseMsg{
+		BeginTimestamp: 0,
+		EndTimestamp:   0,
+		HashValues:     []uint32{hashValue},
+	}
+	switch msgType {
+	case commonpb.MsgType_Insert:
+		insertRequest := internalpb.InsertRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_Insert,
+				MsgID:     reqID,
+				Timestamp: time,
+				SourceID:  reqID,
+			},
+			CollectionName: "Collection",
+			PartitionName:  "Partition",
+			SegmentID:      1,
+			ChannelID:      "0",
+			Timestamps:     []Timestamp{time},
+			RowIDs:         []int64{1},
+			RowData:        []*commonpb.Blob{{}},
+		}
+		insertMsg := &InsertMsg{
+			BaseMsg:       baseMsg,
+			InsertRequest: insertRequest,
+		}
+		return insertMsg
+	case commonpb.MsgType_Delete:
+		deleteRequest := internalpb.DeleteRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_Delete,
+				MsgID:     reqID,
+				Timestamp: 11,
+				SourceID:  reqID,
+			},
+			CollectionName: "Collection",
+			ChannelID:      "1",
+			Timestamps:     []Timestamp{1},
+			PrimaryKeys:    []IntPrimaryKey{1},
+		}
+		deleteMsg := &DeleteMsg{
+			BaseMsg:       baseMsg,
+			DeleteRequest: deleteRequest,
+		}
+		return deleteMsg
+	case commonpb.MsgType_Search:
+		searchRequest := internalpb.SearchRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_Search,
+				MsgID:     reqID,
+				Timestamp: 11,
+				SourceID:  reqID,
+			},
+			ResultChannelID: "0",
+		}
+		searchMsg := &SearchMsg{
+			BaseMsg:       baseMsg,
+			SearchRequest: searchRequest,
+		}
+		return searchMsg
+	case commonpb.MsgType_SearchResult:
+		searchResult := internalpb.SearchResults{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_SearchResult,
+				MsgID:     reqID,
+				Timestamp: 1,
+				SourceID:  reqID,
+			},
+			Status:          &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+			ResultChannelID: "0",
+		}
+		searchResultMsg := &SearchResultMsg{
+			BaseMsg:       baseMsg,
+			SearchResults: searchResult,
+		}
+		return searchResultMsg
+	case commonpb.MsgType_TimeTick:
+		timeTickResult := internalpb.TimeTickMsg{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_TimeTick,
+				MsgID:     reqID,
+				Timestamp: 1,
+				SourceID:  reqID,
+			},
+		}
+		timeTickMsg := &TimeTickMsg{
+			BaseMsg:     baseMsg,
+			TimeTickMsg: timeTickResult,
+		}
+		return timeTickMsg
+	case commonpb.MsgType_QueryNodeStats:
+		queryNodeSegStats := internalpb.QueryNodeStats{
+			Base: &commonpb.MsgBase{
+				MsgType:  commonpb.MsgType_QueryNodeStats,
+				SourceID: reqID,
+			},
+		}
+		queryNodeSegStatsMsg := &QueryNodeStatsMsg{
+			BaseMsg:        baseMsg,
+			QueryNodeStats: queryNodeSegStats,
+		}
+		return queryNodeSegStatsMsg
+	}
+	return nil
+}
+
+func getTimeTickMsg(reqID UniqueID) TsMsg {
+	hashValue := uint32(reqID)
+	time := uint64(reqID)
+	baseMsg := BaseMsg{
+		BeginTimestamp: 0,
+		EndTimestamp:   0,
+		HashValues:     []uint32{hashValue},
+	}
+	timeTickResult := internalpb.TimeTickMsg{
+		Base: &commonpb.MsgBase{
+			MsgType:   commonpb.MsgType_TimeTick,
+			MsgID:     reqID,
+			Timestamp: time,
+			SourceID:  reqID,
+		},
+	}
+	timeTickMsg := &TimeTickMsg{
+		BaseMsg:     baseMsg,
+		TimeTickMsg: timeTickResult,
+	}
+	return timeTickMsg
+}
+
+// Generate MsgPack contains 'num' msgs, with timestamp in (start, end)
+func getRandInsertMsgPack(num int, start int, end int) *MsgPack {
+	Rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	set := make(map[int]bool)
+	msgPack := MsgPack{}
+	for len(set) < num {
+		reqID := Rand.Int()%(end-start-1) + start + 1
+		_, ok := set[reqID]
+		if !ok {
+			set[reqID] = true
+			msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, int64(reqID)))
+		}
+	}
+	return &msgPack
+}
+
+func getInsertMsgPack(ts []int) *MsgPack {
+	msgPack := MsgPack{}
+	for i := 0; i < len(ts); i++ {
+		msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, int64(ts[i])))
+	}
+	return &msgPack
+}
+
+func getTimeTickMsgPack(reqID UniqueID) *MsgPack {
+	msgPack := MsgPack{}
+	msgPack.Msgs = append(msgPack.Msgs, getTimeTickMsg(reqID))
+	return &msgPack
+}
+
+func getPulsarInputStream(pulsarAddress string, producerChannels []string, opts ...RepackFunc) MsgStream {
 	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.AutoCommit.Enable = true
-
-	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance(kafkaBroker, config)
-
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-
+	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
+	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
 	inputStream.AsProducer(producerChannels)
 	for _, opt := range opts {
 		inputStream.SetRepackFunc(opt)
@@ -1177,42 +1097,28 @@ func getKafkaInputStream(kafkaBroker []string, producerChannels []string, opts .
 	return inputStream
 }
 
-func getKafkaOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
-
+func getPulsarOutputStream(pulsarAddress string, consumerChannels []string, consumerSubName string) MsgStream {
 	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Offsets.AutoCommit.Enable = true
-
-	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance(kafkaBroker, config)
-	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
+	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
 	outputStream.AsConsumer(consumerChannels, consumerSubName)
 	outputStream.Start()
 	return outputStream
 }
-func getKafkaTtOutputStream(kafkaBroker []string, consumerChannels []string, consumerSubName string) MsgStream {
 
+func getPulsarTtOutputStream(pulsarAddress string, consumerChannels []string, consumerSubName string) MsgStream {
 	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-
-	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance(kafkaBroker, config)
-	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
+	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
 	outputStream.AsConsumer(consumerChannels, consumerSubName)
 	outputStream.Start()
 	return outputStream
 }
-func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPosition) MsgStream {
 
+func getPulsarTtOutputStreamAndSeek(pulsarAddress string, positions []*MsgPosition) MsgStream {
 	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-
-	config.Version = sarama.V2_8_0_0
-	kafkaClient, _ := mqclient.GetKafkaClientInstance(kafkaBroker, config)
-	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
+	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
+	outputStream, _ := NewMqTtMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
 	consumerName := []string{}
 	for _, c := range positions {
 		consumerName = append(consumerName, c.ChannelName)
@@ -1223,640 +1129,31 @@ func getKafkaTtOutputStreamAndSeek(kafkaBroker []string, positions []*MsgPositio
 	return outputStream
 }
 
-func TestStream_KafkaMsgStream_Insert(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	log.Println("close start ")
-	inputStream.Close()
-	outputStream.Close()
-	log.Println("close finish ")
-}
-
-func TestStream_KafkaMsgStream_Delete(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c := funcutil.RandomString(8)
-	producerChannels := []string{c}
-	consumerChannels := []string{c}
-	consumerSubName := funcutil.RandomString(8)
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Delete, 1))
-	//msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Delete, 3, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_Search(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c := funcutil.RandomString(8)
-	producerChannels := []string{c}
-	consumerChannels := []string{c}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Search, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Search, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_SearchResult(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c := funcutil.RandomString(8)
-	producerChannels := []string{c}
-	consumerChannels := []string{c}
-	consumerSubName := funcutil.RandomString(8)
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_SearchResult, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_SearchResult, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_TimeTick(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c := funcutil.RandomString(8)
-	producerChannels := []string{c}
-	consumerChannels := []string{c}
-	consumerSubName := funcutil.RandomString(8)
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_TimeTick, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_TimeTick, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_BroadCast(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_TimeTick, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_TimeTick, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Broadcast(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(consumerChannels)*len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_RepackFunc(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Insert, 3))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels, repackFunc)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-	err := inputStream.Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaMsgStream_InsertRepackFunc(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-	baseMsg := BaseMsg{
-		BeginTimestamp: 0,
-		EndTimestamp:   0,
-		HashValues:     []uint32{1, 3},
-	}
-
-	insertRequest := internalpb.InsertRequest{
-		Base: &commonpb.MsgBase{
-			MsgType:   commonpb.MsgType_Insert,
-			MsgID:     1,
-			Timestamp: 1,
-			SourceID:  1,
-		},
-		CollectionName: "Collection",
-		PartitionName:  "Partition",
-		SegmentID:      1,
-		ChannelID:      "1",
-		Timestamps:     []Timestamp{1, 1},
-		RowIDs:         []int64{1, 3},
-		RowData:        []*commonpb.Blob{{}, {}},
-	}
-	insertMsg := &InsertMsg{
-		BaseMsg:       baseMsg,
-		InsertRequest: insertRequest,
-	}
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, insertMsg)
-
-	factory := ProtoUDFactory{}
-
-	config1 := sarama.NewConfig()
-	config1.Version = sarama.V2_8_0_0
-	config1.Producer.Return.Successes = true
-	config1.Consumer.Offsets.Initial = -2
-	kafkaClient1, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config1)
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient1, factory.NewUnmarshalDispatcher())
-	inputStream.AsProducer(producerChannels)
-	inputStream.Start()
-
-	config2 := sarama.NewConfig()
-	config2.Version = sarama.V2_8_0_0
-	config2.Producer.Return.Successes = true
-	config2.Consumer.Offsets.Initial = -2
-	kafkaClient2, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config2)
-	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient2, factory.NewUnmarshalDispatcher())
-	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	outputStream.Start()
-	var output MsgStream = outputStream
-
-	err := (*inputStream).Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(output, len(msgPack.Msgs)*2)
-	(*inputStream).Close()
-	(*outputStream).Close()
-}
-
-func TestStream_KafkaMsgStream_DeleteRepackFunc(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	baseMsg := BaseMsg{
-		BeginTimestamp: 0,
-		EndTimestamp:   0,
-		HashValues:     []uint32{1, 3},
-	}
-
-	deleteRequest := internalpb.DeleteRequest{
-		Base: &commonpb.MsgBase{
-			MsgType:   commonpb.MsgType_Delete,
-			MsgID:     1,
-			Timestamp: 1,
-			SourceID:  1,
-		},
-		CollectionName: "Collection",
-		ChannelID:      "1",
-		Timestamps:     []Timestamp{1, 1},
-		PrimaryKeys:    []int64{1, 3},
-	}
-	deleteMsg := &DeleteMsg{
-		BaseMsg:       baseMsg,
-		DeleteRequest: deleteRequest,
-	}
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, deleteMsg)
-
-	factory := ProtoUDFactory{}
-	config1 := sarama.NewConfig()
-	config1.Version = sarama.V2_8_0_0
-	config1.Producer.Return.Successes = true
-	config1.Consumer.Offsets.Initial = -2
-	kafkaClient1, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config1)
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient1, factory.NewUnmarshalDispatcher())
-	inputStream.AsProducer(producerChannels)
-	inputStream.Start()
-
-	config2 := sarama.NewConfig()
-	config2.Version = sarama.V2_8_0_0
-	config2.Producer.Return.Successes = true
-	config2.Consumer.Offsets.Initial = -2
-	kafkaClient2, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config2)
-	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient2, factory.NewUnmarshalDispatcher())
-	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	outputStream.Start()
-	var output MsgStream = outputStream
-
-	err := (*inputStream).Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(output, len(msgPack.Msgs)*2)
-	(*inputStream).Close()
-	(*outputStream).Close()
-}
-
-func TestStream_KafkaMsgStream_DefaultRepackFunc(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := MsgPack{}
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_TimeTick, 1))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_Search, 2))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_SearchResult, 3))
-	msgPack.Msgs = append(msgPack.Msgs, getTsMsg(commonpb.MsgType_QueryNodeStats, 4))
-
-	factory := ProtoUDFactory{}
-	config1 := sarama.NewConfig()
-	config1.Version = sarama.V2_8_0_0
-	config1.Producer.Return.Successes = true
-	config1.Consumer.Offsets.Initial = -2
-	kafkaClient1, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config1)
-	inputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient1, factory.NewUnmarshalDispatcher())
-	inputStream.AsProducer(producerChannels)
-	inputStream.Start()
-
-	config2 := sarama.NewConfig()
-	config2.Version = sarama.V2_8_0_0
-	config2.Producer.Return.Successes = true
-	config2.Consumer.Offsets.Initial = -2
-	kafkaClient2, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config2)
-	outputStream, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient2, factory.NewUnmarshalDispatcher())
-	outputStream.AsConsumer(consumerChannels, consumerSubName)
-	outputStream.Start()
-	var output MsgStream = outputStream
-
-	err := (*inputStream).Produce(&msgPack)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	receiveMsg(output, len(msgPack.Msgs))
-	(*inputStream).Close()
-	(*outputStream).Close()
-}
-
-func TestStream_KafkaTtMsgStream_Insert(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-	msgPack0 := MsgPack{}
-	msgPack0.Msgs = append(msgPack0.Msgs, getTimeTickMsg(0))
-
-	msgPack1 := MsgPack{}
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 3))
-
-	msgPack2 := MsgPack{}
-	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Broadcast(&msgPack0)
-	if err != nil {
-		log.Fatalf("broadcast error = %v", err)
-	}
-	err = inputStream.Produce(&msgPack1)
-	if err != nil {
-		log.Fatalf("produce error = %v", err)
-	}
-	err = inputStream.Broadcast(&msgPack2)
-	if err != nil {
-		log.Fatalf("broadcast error = %v", err)
-	}
-	receiveMsg(outputStream, len(msgPack1.Msgs))
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaTtMsgStream_NoSeek(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1 := funcutil.RandomString(8)
-	producerChannels := []string{c1}
-	consumerChannels := []string{c1}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack0 := MsgPack{}
-	msgPack0.Msgs = append(msgPack0.Msgs, getTimeTickMsg(0))
-
-	msgPack1 := MsgPack{}
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 19))
-
-	msgPack2 := MsgPack{}
-	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5))
-
-	msgPack3 := MsgPack{}
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 14))
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 9))
-
-	msgPack4 := MsgPack{}
-	msgPack4.Msgs = append(msgPack4.Msgs, getTimeTickMsg(11))
-
-	msgPack5 := MsgPack{}
-	msgPack5.Msgs = append(msgPack5.Msgs, getTimeTickMsg(15))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Broadcast(&msgPack0)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack1)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack2)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack3)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack4)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack5)
-	assert.Nil(t, err)
-
-	o1 := outputStream.Consume()
-	o2 := outputStream.Consume()
-	o3 := outputStream.Consume()
-
-	t.Log(o1.BeginTs)
-	t.Log(o2.BeginTs)
-	t.Log(o3.BeginTs)
-	outputStream.Close()
-
-	outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	p1 := outputStream.Consume()
-	p2 := outputStream.Consume()
-	p3 := outputStream.Consume()
-
-	t.Log(p1.BeginTs)
-	t.Log(p2.BeginTs)
-	t.Log(p3.BeginTs)
-	outputStream.Close()
-
-	assert.Equal(t, o1.BeginTs, p1.BeginTs)
-	assert.Equal(t, o2.BeginTs, p2.BeginTs)
-	assert.Equal(t, o3.BeginTs, p3.BeginTs)
-
-}
-
-func TestStream_KafkaTtMsgStream_Seek(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
-	producerChannels := []string{c1, c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack0 := MsgPack{}
-	msgPack0.Msgs = append(msgPack0.Msgs, getTimeTickMsg(0))
-
-	msgPack1 := MsgPack{}
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 1))
-	msgPack1.Msgs = append(msgPack1.Msgs, getTsMsg(commonpb.MsgType_Insert, 19))
-
-	msgPack2 := MsgPack{}
-	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5))
-
-	msgPack3 := MsgPack{}
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 14))
-	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 9))
-
-	msgPack4 := MsgPack{}
-	msgPack4.Msgs = append(msgPack4.Msgs, getTimeTickMsg(11))
-
-	msgPack5 := MsgPack{}
-	msgPack5.Msgs = append(msgPack5.Msgs, getTimeTickMsg(15))
-
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	err := inputStream.Broadcast(&msgPack0)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack1)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack2)
-	assert.Nil(t, err)
-	err = inputStream.Produce(&msgPack3)
-	assert.Nil(t, err)
-	err = inputStream.Broadcast(&msgPack4)
-	assert.Nil(t, err)
-
-	outputStream.Consume()
-	receivedMsg := outputStream.Consume()
-	outputStream.Close()
-	outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, receivedMsg.EndPositions)
-	err = inputStream.Broadcast(&msgPack5)
-	assert.Nil(t, err)
-	seekMsg := outputStream.Consume()
-	for _, msg := range seekMsg.Msgs {
-		assert.Equal(t, msg.BeginTs(), uint64(14))
-	}
-	inputStream.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaTtMsgStream_1(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1 := funcutil.RandomString(8)
-	c2 := funcutil.RandomString(8)
-	p1Channels := []string{c1}
-	p2Channels := []string{c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	inputStream1 := getKafkaInputStream([]string{kafkaAddress}, p1Channels)
-	msgPacks1 := createRandMsgPacks(3, 10, 10)
-	assert.Nil(t, sendMsgPacks(inputStream1, msgPacks1))
-
-	inputStream2 := getKafkaInputStream([]string{kafkaAddress}, p2Channels)
-	msgPacks2 := createRandMsgPacks(5, 10, 10)
-	assert.Nil(t, sendMsgPacks(inputStream2, msgPacks2))
-
-	outputStream := getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-	log.Println("===============receive msg=================")
-	checkNMsgPack := func(t *testing.T, outputStream MsgStream, num int) int {
-		rcvMsg := 0
-		for i := 0; i < num; i++ {
-			msgPack := outputStream.Consume()
-			rcvMsg += len(msgPack.Msgs)
-			if len(msgPack.Msgs) > 0 {
-				for _, msg := range msgPack.Msgs {
-					log.Println("msg type: ", msg.Type(), ", msg value: ", msg)
-					assert.Greater(t, msg.BeginTs(), msgPack.BeginTs)
-					assert.LessOrEqual(t, msg.BeginTs(), msgPack.EndTs)
-				}
-				log.Println("================")
-			}
-		}
-		return rcvMsg
-	}
-	msgCount := checkNMsgPack(t, outputStream, len(msgPacks1)/2)
-	cnt1 := (len(msgPacks1)/2 - 1) * len(msgPacks1[0].Msgs)
-	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
-	assert.Equal(t, (cnt1 + cnt2), msgCount)
-
-	inputStream1.Close()
-	inputStream2.Close()
-	outputStream.Close()
-}
-
-func TestStream_KafkaTtMsgStream_2(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c1 := funcutil.RandomString(8)
-	c2 := funcutil.RandomString(8)
-	p1Channels := []string{c1}
-	p2Channels := []string{c2}
-	consumerChannels := []string{c1, c2}
-	consumerSubName := funcutil.RandomString(8)
-
-	inputStream1 := getKafkaInputStream([]string{kafkaAddress}, p1Channels)
-	msgPacks1 := createRandMsgPacks(3, 10, 10)
-	assert.Nil(t, sendMsgPacks(inputStream1, msgPacks1))
-
-	inputStream2 := getKafkaInputStream([]string{kafkaAddress}, p2Channels)
-	msgPacks2 := createRandMsgPacks(5, 10, 10)
-	assert.Nil(t, sendMsgPacks(inputStream2, msgPacks2))
-
-	rcvMsgPacks := make([]*MsgPack, 0)
-
-	resumeMsgPack := func(t *testing.T) int {
-		var outputStream MsgStream
-		msgCount := len(rcvMsgPacks)
-		if msgCount == 0 {
-			outputStream = getKafkaTtOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-		} else {
-			outputStream = getKafkaTtOutputStreamAndSeek([]string{kafkaAddress}, rcvMsgPacks[msgCount-1].EndPositions)
-
-		}
-		msgPack := outputStream.Consume()
-		rcvMsgPacks = append(rcvMsgPacks, msgPack)
-		if len(msgPack.Msgs) > 0 {
-			for _, msg := range msgPack.Msgs {
-				log.Println("msg type: ", msg.Type(), ", msg value: ", msg)
-				assert.Greater(t, msg.BeginTs(), msgPack.BeginTs)
-				assert.LessOrEqual(t, msg.BeginTs(), msgPack.EndTs)
-			}
-
-		}
-
-		outputStream.Close()
-
-		return len(rcvMsgPacks[msgCount].Msgs)
-	}
-
-	msgCount := 0
-	for i := 0; i < len(msgPacks1)/2; i++ {
-		msgCount += resumeMsgPack(t)
-	}
-	cnt1 := (len(msgPacks1)/2 - 1) * len(msgPacks1[0].Msgs)
-	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
-	assert.Equal(t, (cnt1 + cnt2), msgCount)
-
-	inputStream1.Close()
-	inputStream2.Close()
-}
-
-func TestStream_KafkaMqMsgStream_Seek(t *testing.T) {
-	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	c := funcutil.RandomString(8)
-	producerChannels := []string{c}
-	consumerChannels := []string{c}
-	consumerSubName := funcutil.RandomString(8)
-
-	msgPack := &MsgPack{}
-	inputStream := getKafkaInputStream([]string{kafkaAddress}, producerChannels)
-	outputStream := getKafkaOutputStream([]string{kafkaAddress}, consumerChannels, consumerSubName)
-
-	for i := 0; i < 10; i++ {
-		insertMsg := getTsMsg(commonpb.MsgType_Insert, int64(i))
-		msgPack.Msgs = append(msgPack.Msgs, insertMsg)
-	}
-
-	err := inputStream.Produce(msgPack)
-	assert.Nil(t, err)
-	var seekPosition *internalpb.MsgPosition
-	for i := 0; i < 10; i++ {
+func receiveMsg(outputStream MsgStream, msgCount int) {
+	receiveCount := 0
+	for {
 		result := outputStream.Consume()
-		assert.Equal(t, result.Msgs[0].ID(), int64(i))
-		if i == 5 {
-			seekPosition = result.EndPositions[0]
+		if len(result.Msgs) > 0 {
+			msgs := result.Msgs
+			for _, v := range msgs {
+				receiveCount++
+				log.Println("msg type: ", v.Type(), ", msg value: ", v)
+			}
+			log.Println("================")
+		}
+		if receiveCount >= msgCount {
+			break
 		}
 	}
-	outputStream.Close()
+}
 
-	factory := ProtoUDFactory{}
-	config := sarama.NewConfig()
-	config.Version = sarama.V2_8_0_0
-	config.Producer.Return.Successes = true
-
-	kafkaClient, _ := mqclient.GetKafkaClientInstance([]string{kafkaAddress}, config)
-	outputStream2, _ := NewMqMsgStream(context.Background(), 100, 100, kafkaClient, factory.NewUnmarshalDispatcher())
-	outputStream2.AsConsumer(consumerChannels, consumerSubName)
-	outputStream2.Seek([]*internalpb.MsgPosition{seekPosition})
-	outputStream2.Start()
-
-	for i := 6; i < 10; i++ {
-		result := outputStream2.Consume()
-		assert.Equal(t, result.Msgs[0].ID(), int64(i))
+func printMsgPack(msgPack *MsgPack) {
+	if msgPack == nil {
+		log.Println("msg nil")
+	} else {
+		for _, v := range msgPack.Msgs {
+			log.Println("msg type: ", v.Type(), ", msg value: ", v)
+		}
 	}
-	outputStream2.Close()
-
+	log.Println("================")
 }
