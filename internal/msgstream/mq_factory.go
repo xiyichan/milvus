@@ -23,6 +23,7 @@ import (
 	rocksmqserver "github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 )
 
+// PmsFactory is a pulsar msgstream factory that implemented Factory interface(msgstream.go)
 type PmsFactory struct {
 	dispatcherFactory ProtoUDFactory
 	// the following members must be public, so that mapstructure.Decode() can access them
@@ -31,6 +32,7 @@ type PmsFactory struct {
 	PulsarBufSize  int64
 }
 
+// SetParams is used to set parameters for PmsFactory
 func (f *PmsFactory) SetParams(params map[string]interface{}) error {
 	err := mapstructure.Decode(params, f)
 	if err != nil {
@@ -39,6 +41,7 @@ func (f *PmsFactory) SetParams(params map[string]interface{}) error {
 	return nil
 }
 
+// NewMsgStream is used to generate a new Msgstream object
 func (f *PmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	pulsarClient, err := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
 	if err != nil {
@@ -47,6 +50,7 @@ func (f *PmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.PulsarBufSize, pulsarClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
+// NewTtMsgStream is used to generate a new TtMsgstream object
 func (f *PmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	pulsarClient, err := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
 	if err != nil {
@@ -55,10 +59,12 @@ func (f *PmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	return NewMqTtMsgStream(ctx, f.ReceiveBufSize, f.PulsarBufSize, pulsarClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
+// NewQueryMsgStream is used to generate a new QueryMsgstream object
 func (f *PmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
 	return f.NewMsgStream(ctx)
 }
 
+// NewPmsFactory is used to generate a new PmsFactory object
 func NewPmsFactory() Factory {
 	f := &PmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
@@ -68,6 +74,7 @@ func NewPmsFactory() Factory {
 	return f
 }
 
+// RmsFactory is a rocksmq msgstream factory that implemented Factory interface(msgstream.go)
 type RmsFactory struct {
 	dispatcherFactory ProtoUDFactory
 	// the following members must be public, so that mapstructure.Decode() can access them
@@ -75,6 +82,7 @@ type RmsFactory struct {
 	RmqBufSize     int64
 }
 
+// SetParams is used to set parameters for RmsFactory
 func (f *RmsFactory) SetParams(params map[string]interface{}) error {
 	err := mapstructure.Decode(params, f)
 	if err != nil {
@@ -83,6 +91,7 @@ func (f *RmsFactory) SetParams(params map[string]interface{}) error {
 	return nil
 }
 
+// NewMsgStream is used to generate a new Msgstream object
 func (f *RmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
@@ -91,6 +100,7 @@ func (f *RmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.RmqBufSize, rmqClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
+// NewTtMsgStream is used to generate a new TtMsgstream object
 func (f *RmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
@@ -99,6 +109,7 @@ func (f *RmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 	return NewMqTtMsgStream(ctx, f.ReceiveBufSize, f.RmqBufSize, rmqClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
+// NewQueryMsgStream is used to generate a new QueryMsgstream object
 func (f *RmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
 	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
@@ -107,6 +118,7 @@ func (f *RmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
 	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.RmqBufSize, rmqClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
+// NewRmsFactory is used to generate a new RmsFactory object
 func NewRmsFactory() Factory {
 	f := &RmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
