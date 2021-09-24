@@ -146,7 +146,7 @@ func (p *ParamTable) initFlushInsertBufferSize() {
 
 func (p *ParamTable) initInsertBinlogRootPath() {
 	// GOOSE TODO: rootPath change to  TenentID
-	rootPath, err := p.Load("etcd.rootPath")
+	rootPath, err := p.Load("minio.rootPath")
 	if err != nil {
 		panic(err)
 	}
@@ -154,7 +154,7 @@ func (p *ParamTable) initInsertBinlogRootPath() {
 }
 
 func (p *ParamTable) initStatsBinlogRootPath() {
-	rootPath, err := p.Load("etcd.rootPath")
+	rootPath, err := p.Load("minio.rootPath")
 	if err != nil {
 		panic(err)
 	}
