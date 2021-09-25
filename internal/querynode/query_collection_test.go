@@ -83,6 +83,7 @@ func updateTSafe(queryCollection *queryCollection, timestamp Timestamp) {
 func TestQueryCollection_withoutVChannel(t *testing.T) {
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarAddress,
+		"KafkaAddress":   Params.KafkaAddress,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024}
 	factory := msgstream.NewPmsFactory()

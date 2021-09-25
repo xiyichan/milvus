@@ -582,6 +582,7 @@ func TestRootCoord(t *testing.T) {
 
 	m := map[string]interface{}{
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"receiveBufSize": 1024,
 		"pulsarBufSize":  1024}
 	err = tmpFactory.SetParams(m)
@@ -2080,6 +2081,7 @@ func TestRootCoord2(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -2340,6 +2342,7 @@ func TestCheckFlushedSegments(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -2497,6 +2500,7 @@ func TestRootCoord_CheckZeroShardsNum(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)

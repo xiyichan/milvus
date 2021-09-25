@@ -154,6 +154,7 @@ func (node *QueryNode) Start() error {
 	var err error
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarAddress,
+		"KafkaAddress":   Params.KafkaAddress,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024}
 	err = node.msFactory.SetParams(m)

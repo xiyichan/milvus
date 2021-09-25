@@ -77,6 +77,7 @@ func TestFlowGraphInsertBufferNodeCreate(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -163,6 +164,7 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -272,6 +274,7 @@ func TestFlushSegment(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -383,6 +386,7 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -623,6 +627,7 @@ func TestInsertBufferNode_getCollMetaBySegID(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -676,6 +681,7 @@ func TestInsertBufferNode_bufferInsertMsg(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)

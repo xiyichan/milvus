@@ -195,6 +195,7 @@ func (s *Server) Start() error {
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarAddress,
 		"KafkaAddress":   Params.KafkaAddress,
+		"KafkaBufSize":   1024,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024}
 	err = s.msFactory.SetParams(m)

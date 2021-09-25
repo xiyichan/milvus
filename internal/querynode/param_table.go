@@ -100,6 +100,7 @@ func (p *ParamTable) Init() {
 		p.initMinioBucketName()
 
 		p.initPulsarAddress()
+		p.initKafkaAddress()
 		p.initRocksmqPath()
 		p.initEtcdEndpoints()
 		p.initMetaRootPath()

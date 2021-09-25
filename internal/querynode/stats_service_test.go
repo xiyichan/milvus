@@ -48,6 +48,7 @@ func TestSegmentManagement_sendSegmentStatistic(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": receiveBufSize,
 		"pulsarAddress":  Params.PulsarAddress,
+		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err := msFactory.SetParams(m)
 	assert.Nil(t, err)
