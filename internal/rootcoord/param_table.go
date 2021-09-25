@@ -67,6 +67,7 @@ func (p *ParamTable) Init() {
 		}
 
 		p.initPulsarAddress()
+		p.initKafkaAddress()
 		p.initEtcdEndpoints()
 		p.initMetaRootPath()
 		p.initKvRootPath()
@@ -94,6 +95,14 @@ func (p *ParamTable) initPulsarAddress() {
 		panic(err)
 	}
 	p.PulsarAddress = addr
+}
+
+func (p *ParamTable) initKafkaAddress() {
+	addr, err := p.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	p.KafkaAddress = addr
 }
 
 func (p *ParamTable) initEtcdEndpoints() {

@@ -55,9 +55,11 @@ services:
 
   kafka:
     image: wurstmeister/kafka
+    depends_on:
+      - zookeeper
     environment:
-      KAFKA_ADVERTISED_HOST_NAME: 47.106.76.166
-      KAFKA_ZOOKEEPER_CONNECT: 47.106.76.166:2181
+      KAFKA_ADVERTISED_HOST_NAME: 127.0.0.1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_BROKER_ID: 0
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092

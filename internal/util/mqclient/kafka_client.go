@@ -20,7 +20,6 @@ var kafkaOnce sync.Once
 
 func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
 	kafkaOnce.Do(func() {
-		//broker = []string{"47.106.76.166:9092"}
 		log.Info("kafka broker", zap.Any("broker", broker))
 		c, err := sarama.NewClient(broker, opts)
 		if err != nil {

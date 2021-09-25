@@ -440,6 +440,9 @@ func (c *Core) setMsgStreams() error {
 	if Params.PulsarAddress == "" {
 		return fmt.Errorf("PulsarAddress is empty")
 	}
+	if Params.KafkaAddress == "" {
+		return fmt.Errorf("KafkaAddress is empty")
+	}
 	if Params.MsgChannelSubName == "" {
 		return fmt.Errorf("MsgChannelSubName is emptyr")
 	}

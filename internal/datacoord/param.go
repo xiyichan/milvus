@@ -81,6 +81,7 @@ func (p *ParamTable) Init() {
 		p.initCollectionBinlogSubPath()
 
 		p.initPulsarAddress()
+		p.initKafkaAddress()
 		p.initRocksmqPath()
 
 		p.initSegmentMaxSize()

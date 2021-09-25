@@ -7,7 +7,7 @@ require (
 	github.com/Shopify/sarama v1.29.1
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/antonmedv/expr v1.8.9
-	github.com/apache/pulsar-client-go v0.6.0
+	github.com/apache/pulsar-client-go v0.5.0
 	github.com/apache/thrift/lib/go/thrift v0.0.0-20210120171102-e27e82c46ba4 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.0.1
@@ -28,6 +28,7 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
+	github.com/protocolbuffers/protobuf v3.18.0+incompatible // indirect
 	github.com/shirou/gopsutil v3.21.8+incompatible
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cast v1.3.1
@@ -41,7 +42,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.0
 	go.etcd.io/etcd/client/v3 v3.5.0
 	go.etcd.io/etcd/server/v3 v3.5.0
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/zap v1.17.0
 	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6
 	google.golang.org/grpc v1.38.0
@@ -50,6 +51,5 @@ require (
 
 replace (
 	github.com/apache/pulsar-client-go => github.com/apache/pulsar-client-go v0.6.0
-	github.com/keybase/go-keychain => github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4
 	google.golang.org/grpc => google.golang.org/grpc v1.38.0
 )
