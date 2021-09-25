@@ -64,7 +64,37 @@ type ParamTable struct {
 // InitOnce initialize once
 func (p *ParamTable) InitOnce() {
 	once.Do(func() {
+<<<<<<< HEAD
 		p.Init()
+=======
+		// load yaml
+		p.BaseTable.Init()
+		err := p.LoadYaml("advanced/root_coord.yaml")
+		if err != nil {
+			panic(err)
+		}
+
+		p.initPulsarAddress()
+		p.initKafkaAddress()
+		p.initEtcdEndpoints()
+		p.initMetaRootPath()
+		p.initKvRootPath()
+
+		p.initMsgChannelSubName()
+		p.initTimeTickChannel()
+		p.initStatisticsChannelName()
+
+		p.initMaxPartitionNum()
+		p.initMinSegmentSizeToEnableIndex()
+		p.initDefaultPartitionName()
+		p.initDefaultIndexName()
+
+		p.initTimeout()
+		p.initTimeTickInterval()
+
+		p.initLogCfg()
+		p.initRoleName()
+>>>>>>> Support kafka as the messaging system (#5218)
 	})
 }
 
