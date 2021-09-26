@@ -75,7 +75,6 @@ func TestFlowGraphInsertBufferNodeCreate(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -124,10 +123,10 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 		}{
 			{[]Msg{},
 				"Invalid input length == 0"},
-			{[]Msg{&insertMsg{}, &insertMsg{}, &insertMsg{}},
+			{[]Msg{&flowGraphMsg{}, &flowGraphMsg{}, &flowGraphMsg{}},
 				"Invalid input length == 3"},
 			{[]Msg{&mockMsg{}},
-				"Invalid input length == 1 but input message is not insertMsg"},
+				"Invalid input length == 1 but input message is not flowGraphMsg"},
 		}
 
 		for _, test := range invalidInTests {
@@ -162,7 +161,6 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -183,12 +181,12 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 		collectionID: UniqueID(1),
 	}
 
-	inMsg := genInsertMsg(insertChannelName)
-	var iMsg flowgraph.Msg = &inMsg
-	iBNode.Operate([]flowgraph.Msg{iMsg})
+	inMsg := genFlowGraphMsg(insertChannelName)
+	var fgMsg flowgraph.Msg = &inMsg
+	iBNode.Operate([]flowgraph.Msg{fgMsg})
 }
 
-func genInsertMsg(insertChannelName string) insertMsg {
+func genFlowGraphMsg(insertChannelName string) flowGraphMsg {
 
 	timeRange := TimeRange{
 		timestampMin: 0,
@@ -203,7 +201,7 @@ func genInsertMsg(insertChannelName string) insertMsg {
 		},
 	}
 
-	var iMsg = &insertMsg{
+	var iMsg = &flowGraphMsg{
 		insertMessages: make([]*msgstream.InsertMsg, 0),
 		timeRange: TimeRange{
 			timestampMin: timeRange.timestampMin,
@@ -266,7 +264,6 @@ func TestFlushSegment(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -378,7 +375,6 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -395,7 +391,7 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 
 	// Auto flush number of rows set to 2
 
-	inMsg := genInsertMsg("datanode-03-test-autoflush")
+	inMsg := genFlowGraphMsg("datanode-03-test-autoflush")
 	inMsg.insertMessages = dataFactory.GetMsgStreamInsertMsgs(2)
 	var iMsg flowgraph.Msg = &inMsg
 
@@ -605,7 +601,6 @@ func TestInsertBufferNode_getCollMetaBySegID(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -659,7 +654,6 @@ func TestInsertBufferNode_bufferInsertMsg(t *testing.T) {
 	m := map[string]interface{}{
 		"receiveBufSize": 1024,
 		"pulsarAddress":  Params.PulsarAddress,
-		"kafkaAddress":   Params.KafkaAddress,
 		"pulsarBufSize":  1024}
 	err = msFactory.SetParams(m)
 	assert.Nil(t, err)
@@ -673,7 +667,7 @@ func TestInsertBufferNode_bufferInsertMsg(t *testing.T) {
 	iBNode, err := newInsertBufferNode(ctx, replica, msFactory, NewAllocatorFactory(), flushChan, saveBinlog, "string", newCache())
 	require.NoError(t, err)
 
-	inMsg := genInsertMsg(insertChannelName)
+	inMsg := genFlowGraphMsg(insertChannelName)
 	for _, msg := range inMsg.insertMessages {
 		msg.EndTimestamp = 101 // ts valid
 		err = iBNode.bufferInsertMsg(msg, &internalpb.MsgPosition{})
