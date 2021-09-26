@@ -108,40 +108,7 @@ func (p *ParamTable) Init() {
 // Init once ensure param table is a singleton
 func (p *ParamTable) InitOnce() {
 	once.Do(func() {
-<<<<<<< HEAD:internal/datacoord/param_table.go
 		p.Init()
-=======
-		// load yaml
-		p.BaseTable.Init()
-
-		if err := p.LoadYaml("advanced/data_coord.yaml"); err != nil {
-			panic(err)
-		}
-
-		// set members
-		p.initEtcdEndpoints()
-		p.initMetaRootPath()
-		p.initKvRootPath()
-		p.initSegmentBinlogSubPath()
-		p.initCollectionBinlogSubPath()
-
-		p.initPulsarAddress()
-		p.initKafkaAddress()
-		p.initRocksmqPath()
-
-		p.initSegmentMaxSize()
-		p.initSegmentSealProportion()
-		p.initSegAssignmentExpiration()
-		p.initInsertChannelPrefixName()
-		p.initStatisticsChannelName()
-		p.initTimeTickChannelName()
-		p.initSegmentInfoChannelName()
-		p.initDataCoordSubscriptionName()
-		p.initLogCfg()
-
-		p.initFlushStreamPosSubPath()
-		p.initStatsStreamPosSubPath()
->>>>>>> Support kafka as the messaging system (#5218):internal/datacoord/param.go
 	})
 }
 
