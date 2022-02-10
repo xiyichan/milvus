@@ -56,7 +56,8 @@ var Params paramtable.GlobalParamTable
 
 func newMsgFactory(localMsg bool) msgstream.Factory {
 	if localMsg {
-		return msgstream.NewRmsFactory()
+		//return msgstream.NewRmsFactory()
+		return msgstream.NewKmsFactory()
 	}
 	return msgstream.NewPmsFactory()
 }

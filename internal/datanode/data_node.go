@@ -217,6 +217,7 @@ func (node *DataNode) Init() error {
 
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarCfg.Address,
+		"KafkaAddress":   Params.KafkaCfg.Address,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024,
 	}

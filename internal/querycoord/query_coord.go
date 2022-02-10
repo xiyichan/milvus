@@ -200,6 +200,7 @@ func (qc *QueryCoord) Init() error {
 func (qc *QueryCoord) Start() error {
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.PulsarCfg.Address,
+		"KafkaAddress":   Params.KafkaCfg.Address,
 		"ReceiveBufSize": 1024,
 		"PulsarBufSize":  1024}
 	err := qc.msFactory.SetParams(m)

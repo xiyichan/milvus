@@ -38,6 +38,10 @@ pulsar:
   port: 6650 # Port of pulsar
   maxMessageSize: 5242880 # 5 * 1024 * 1024 Bytes, Maximum size of each message in pulsar.
 
+kafka:
+  address: localhost
+  port: 9092
+
 rocksmq:
   path: /var/lib/milvus/rdb_data # The path where the message is stored in rocksmq
   rocksmqPageSize: 2147483648 # 2 GB, 2 * 1024 * 1024 * 1024 bytes, The size of each page of messages in rocksmq

@@ -53,6 +53,28 @@ services:
     ports:
       - "6831:6831/udp"
       - "16686:16686"
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: wurstmeister/kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 127.0.0.1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 0
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      #KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      #KAFKA_DELETE_TOPIC_ENABLE: 'true'
+    volumes:
+      - /etc/localtime:/etc/localtime
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9092:9092"
 
 networks:
   default:

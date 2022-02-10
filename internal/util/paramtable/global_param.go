@@ -52,6 +52,7 @@ type GlobalParamTable struct {
 	BaseParams BaseParamTable
 
 	PulsarCfg  pulsarConfig
+	KafkaCfg   kafkaConfig
 	RocksmqCfg rocksmqConfig
 	MinioCfg   minioConfig
 
@@ -81,6 +82,7 @@ func (p *GlobalParamTable) Init() {
 	p.BaseParams.Init()
 
 	p.PulsarCfg.init(&p.BaseParams)
+	p.KafkaCfg.init(&p.BaseParams)
 	p.RocksmqCfg.init(&p.BaseParams)
 	p.MinioCfg.init(&p.BaseParams)
 
@@ -140,6 +142,26 @@ func (p *pulsarConfig) initMaxMessageSize() {
 			p.MaxMessageSize = maxMessageSize
 		}
 	}
+}
+
+// --- kafka ---
+type kafkaConfig struct {
+	BaseParams *BaseParamTable
+	Address    string
+}
+
+func (k *kafkaConfig) init(bp *BaseParamTable) {
+	k.BaseParams = bp
+
+	k.initAddress()
+}
+
+func (k *kafkaConfig) initAddress() {
+	addr, err := k.BaseParams.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	k.Address = addr
 }
 
 ///////////////////////////////////////////////////////////////////////////////

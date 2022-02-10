@@ -176,6 +176,20 @@ func (gp *BaseTable) tryloadFromEnv() {
 	}
 	gp.Save("_PulsarAddress", pulsarAddress)
 
+	kafkaAddress := os.Getenv("KAFKA_ADDRESS")
+	if kafkaAddress == "" {
+		kafkaHost, err := gp.Load("kafka.address")
+		if err != nil {
+			panic(err)
+		}
+		port, err := gp.Load("kafka.port")
+		if err != nil {
+			panic(err)
+		}
+		kafkaAddress = kafkaHost + ":" + port
+	}
+	gp.Save("_KafkaAddress", kafkaAddress)
+
 	rocksmqPath := os.Getenv("ROCKSMQ_PATH")
 	if rocksmqPath == "" {
 		path, err := gp.Load("rocksmq.path")
