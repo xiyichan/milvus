@@ -83,7 +83,7 @@ func (kc *kafkaConsumer) Setup(sess sarama.ConsumerGroupSession) error {
 func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 	log.Info("Clean up")
 	//所有claim推出之后 关闭msgChan
-	close(kc.msgChannel)
+	//close(kc.msgChannel)
 
 	return nil
 
@@ -142,7 +142,7 @@ func (kc *kafkaConsumer) Chan() <-chan Message {
 					//等所有协程claim退出在退出for
 					log.Info("关闭线程")
 					//kc.wg.Done()
-
+					close(kc.msgChannel)
 					break
 				}
 
