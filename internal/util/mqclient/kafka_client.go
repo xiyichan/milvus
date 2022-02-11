@@ -53,13 +53,16 @@ func (kc *kafkaClient) CreateReader(options ReaderOptions) (Reader, error) {
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
 	config.Consumer.Return.Errors = true
-	c, err := sarama.NewConsumer(kc.broker, config)
+	//c, err := sarama.NewConsumer(kc.broker, config)
+	g, err := sarama.NewConsumerGroup(kc.broker, options.Name, config)
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
-	cp, err := c.ConsumePartition(options.Topic, 0, options.StartMessageID.(*kafkaID).messageID)
-	reader := &kafkaReader{r: c, cp: cp, offset: options.StartMessageID.(*kafkaID).messageID, topicName: options.Topic}
+	//cp, err := c.ConsumePartition(options.Topic, 0, options.StartMessageID.(*kafkaID).messageID)
+	//reader := &kafkaReader{r: c, cp: cp, offset: options.StartMessageID.(*kafkaID).messageID, topicName: options.Topic}
+	reader := &kafkaReader{cg: g, readFlag: true, closeCh: make(chan struct{}), msgChannel: make(chan Message), offset: options.StartMessageID.(*kafkaID).messageID, topicName: options.Topic}
+
 	return reader, nil
 }
 

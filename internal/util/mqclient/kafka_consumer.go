@@ -5,7 +5,6 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
-	"sync"
 )
 
 //
@@ -64,8 +63,6 @@ type kafkaConsumer struct {
 	g          sarama.ConsumerGroup
 	c          sarama.Client
 	msgChannel chan Message
-	wg         sync.WaitGroup
-	lock       sync.Mutex
 	topicName  string
 	//end        chan bool
 	offset  int64
@@ -91,6 +88,7 @@ func (kc *kafkaConsumer) Cleanup(sess sarama.ConsumerGroupSession) error {
 func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	log.Info("consumer claim start")
 	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
+	claim.Messages()
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kc.msgChannel <- &kafkaMessage{msg: msg}
@@ -99,7 +97,6 @@ func (kc *kafkaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 		//fmt.Println(string(msg.Value))
 
 	}
-
 	return nil
 }
 
@@ -168,16 +165,15 @@ func (kc *kafkaConsumer) Close() {
 	//加锁为了退出时消费消息已经消费完
 	log.Info("close consumer")
 
-	kc.lock.Lock()
 	close(kc.closeCh)
 	log.Info("关闭信号")
-	kc.wg.Wait()
+
 	log.Info("协程所有关闭")
 	err := kc.g.Close()
 	if err != nil {
 		log.Error("err", zap.Any("err", err))
 	}
-	kc.lock.Unlock()
+
 	log.Info("close consumer success")
 	//kc.c.Close()
 }
