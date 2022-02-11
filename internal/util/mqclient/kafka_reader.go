@@ -71,11 +71,11 @@ type kafkaReader struct {
 func (kr *kafkaReader) Setup(sess sarama.ConsumerGroupSession) error {
 	sess.ResetOffset(kr.topicName, 0, kr.offset, "modified_meta")
 
-	log.Info("setup")
+	//log.Info("setup")
 	return nil
 }
 func (kr *kafkaReader) Cleanup(sess sarama.ConsumerGroupSession) error {
-	log.Info("Clean up")
+	//log.Info("Clean up")
 	//所有claim推出之后 关闭msgChan
 	//close(kc.msgChannel)
 
@@ -83,14 +83,14 @@ func (kr *kafkaReader) Cleanup(sess sarama.ConsumerGroupSession) error {
 
 }
 func (kr *kafkaReader) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	log.Info("consumer claim start")
-	log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
+	//log.Info("consumer claim start")
+	//log.Info("message length", zap.Any("length", len(claim.Messages())), zap.Any("topic", claim.Topic()))
 
 	for msg := range claim.Messages() {
 		//fmt.Printf("Message topic:%q partition:%d offset:%d\n", msg.Topic, msg.Partition, msg.Offset)
 		kr.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
-		log.Info("receive msg", zap.Any("msg", msg.Value))
+		//log.Info("receive msg", zap.Any("msg", msg.Value))
 		//fmt.Println(string(msg.Value))
 		if msg.Offset == kr.highWaterMarkOffset {
 			close(kr.closeCh)

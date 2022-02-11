@@ -72,14 +72,15 @@ func (kc *kafkaClient) Subscribe(options ConsumerOptions) (Consumer, error) {
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
 	config.Consumer.Return.Errors = true
-
-	g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, config)
+	c, err := sarama.NewConsumer(kc.broker, config)
+	//g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, config)
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
+	consumer := &kafkaConsumer{c: c, offset: sarama.OffsetOldest, topicName: options.Topic, closeCh: make(chan struct{}), groupID: options.SubscriptionName}
 
-	consumer := &kafkaConsumer{c: kc.client, g: g, offset: sarama.OffsetOldest, topicName: options.Topic, closeCh: make(chan struct{}), groupID: options.SubscriptionName}
+	//consumer := &kafkaConsumer{c: kc.client, g: g, offset: sarama.OffsetOldest, topicName: options.Topic, closeCh: make(chan struct{}), groupID: options.SubscriptionName}
 	return consumer, nil
 
 }
