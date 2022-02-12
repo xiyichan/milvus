@@ -19,6 +19,7 @@ package roles
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/msgstream/mqimpl/rocksmq/server/rocksmq"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,7 +48,6 @@ import (
 	logutil "github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )

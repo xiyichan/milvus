@@ -28,7 +28,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/mqclient"
+	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 	"github.com/milvus-io/milvus/internal/util/uniquegenerator"
 )
 
