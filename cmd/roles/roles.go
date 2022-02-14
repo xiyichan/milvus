@@ -19,6 +19,7 @@ package roles
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/msgstream/mqimpl/rocksmq/server/rocksmq"
 	"net/http"
 	"os"
 	"os/signal"
@@ -35,7 +36,6 @@ import (
 	"github.com/milvus-io/milvus/internal/indexcoord"
 	"github.com/milvus-io/milvus/internal/indexnode"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/logutil"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -45,14 +45,14 @@ import (
 	"github.com/milvus-io/milvus/internal/rootcoord"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/healthz"
+	logutil "github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-var Params paramtable.GlobalParamTable
+var Params paramtable.ComponentParam
 
 func newMsgFactory(localMsg bool) msgstream.Factory {
 	if localMsg {
@@ -365,9 +365,9 @@ func (mr *MilvusRoles) Run(local bool, alias string) {
 		}
 		defer stopRocksmq()
 
-		if Params.BaseParams.UseEmbedEtcd {
+		if Params.EtcdCfg.UseEmbedEtcd {
 			// start etcd server
-			etcd.InitEtcdServer(&Params.BaseParams)
+			etcd.InitEtcdServer(&Params.EtcdCfg)
 			defer etcd.StopEtcdServer()
 		}
 	} else {

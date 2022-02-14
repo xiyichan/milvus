@@ -147,7 +147,7 @@ func (t *CreateCollectionReqTask) Execute(ctx context.Context) error {
 		chanNames[i] = ToPhysicalChannel(vchanNames[i])
 
 		deltaChanNames[i] = t.core.chanTimeTick.getDeltaChannelName()
-		deltaChanName, err1 := ConvertChannelName(chanNames[i], Params.RootCoordCfg.DmlChannelName, Params.RootCoordCfg.DeltaChannelName)
+		deltaChanName, err1 := ConvertChannelName(chanNames[i], Params.MsgChannelCfg.RootCoordDml, Params.MsgChannelCfg.RootCoordDelta)
 		if err1 != nil || deltaChanName != deltaChanNames[i] {
 			return fmt.Errorf("dmlChanName %s and deltaChanName %s mis-match", chanNames[i], deltaChanNames[i])
 		}
@@ -303,17 +303,23 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// drop all indices
+	if err = t.core.RemoveIndex(ctx, t.Req.CollectionName, ""); err != nil {
+		return err
+	}
+
+	// Allocate a new ts to make sure the channel timetick is consistent.
+	ts, err = t.core.TSOAllocator(1)
+	if err != nil {
+		return fmt.Errorf("TSO alloc fail, error = %w", err)
+	}
+
 	// build DdOperation and save it into etcd, when ddmsg send fail,
 	// system can restore ddmsg from etcd and re-send
 	ddReq.Base.Timestamp = ts
 	ddOpStr, err := EncodeDdOperation(&ddReq, DropCollectionDDType)
 	if err != nil {
 		return fmt.Errorf("encodeDdOperation fail, error = %w", err)
-	}
-
-	// drop all indices
-	if err = t.core.RemoveIndex(ctx, t.Req.CollectionName, ""); err != nil {
-		return err
 	}
 
 	// get all aliases before meta table updated
@@ -355,7 +361,7 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		// remove delta channels
 		deltaChanNames := make([]string, len(collMeta.PhysicalChannelNames))
 		for i, chanName := range collMeta.PhysicalChannelNames {
-			if deltaChanNames[i], err = ConvertChannelName(chanName, Params.RootCoordCfg.DmlChannelName, Params.RootCoordCfg.DeltaChannelName); err != nil {
+			if deltaChanNames[i], err = ConvertChannelName(chanName, Params.MsgChannelCfg.RootCoordDml, Params.MsgChannelCfg.RootCoordDelta); err != nil {
 				return err
 			}
 		}
@@ -447,6 +453,7 @@ func (t *DescribeCollectionReqTask) Execute(ctx context.Context) error {
 	t.Rsp.CreatedUtcTimestamp = uint64(createdPhysicalTime)
 	t.Rsp.Aliases = t.core.MetaTable.ListAliases(collInfo.ID)
 	t.Rsp.StartPositions = collInfo.GetStartPositions()
+	t.Rsp.CollectionName = t.Rsp.Schema.Name
 	return nil
 }
 

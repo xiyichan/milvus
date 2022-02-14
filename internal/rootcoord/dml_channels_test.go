@@ -24,7 +24,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/mqclient"
+	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

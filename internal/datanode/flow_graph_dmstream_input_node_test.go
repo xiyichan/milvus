@@ -23,7 +23,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
-	"github.com/milvus-io/milvus/internal/util/mqclient"
+	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -18,15 +18,14 @@ package msgstream
 
 import (
 	"context"
+	kafkaclientImpl "github.com/milvus-io/milvus/internal/msgstream/mqclient/kafka"
+	pulsarclientImpl "github.com/milvus-io/milvus/internal/msgstream/mqclient/pulsar"
+	rmqclientImpl "github.com/milvus-io/milvus/internal/msgstream/mqclient/rmq"
+	"github.com/milvus-io/milvus/internal/msgstream/mqimpl/rocksmq/client/rocksmq"
+	rocksmqserver "github.com/milvus-io/milvus/internal/msgstream/mqimpl/rocksmq/server/rocksmq"
 
-	sarama "github.com/Shopify/sarama"
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/util/mqclient"
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
-	rocksmqserver "github.com/milvus-io/milvus/internal/util/rocksmq/server/rocksmq"
 	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
 )
 
 // PmsFactory is a pulsar msgstream factory that implemented Factory interface(msgstream.go)
@@ -49,7 +48,7 @@ func (f *PmsFactory) SetParams(params map[string]interface{}) error {
 
 // NewMsgStream is used to generate a new Msgstream object
 func (f *PmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	pulsarClient, err := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
+	pulsarClient, err := pulsarclientImpl.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +57,7 @@ func (f *PmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 
 // NewTtMsgStream is used to generate a new TtMsgstream object
 func (f *PmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	pulsarClient, err := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
+	pulsarClient, err := pulsarclientImpl.GetPulsarClientInstance(pulsar.ClientOptions{URL: f.PulsarAddress})
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func (f *RmsFactory) SetParams(params map[string]interface{}) error {
 
 // NewMsgStream is used to generate a new Msgstream object
 func (f *RmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
+	rmqClient, err := rmqclientImpl.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +107,7 @@ func (f *RmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 
 // NewTtMsgStream is used to generate a new TtMsgstream object
 func (f *RmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
+	rmqClient, err := rmqclientImpl.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +116,7 @@ func (f *RmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
 
 // NewQueryMsgStream is used to generate a new QueryMsgstream object
 func (f *RmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
-	rmqClient, err := mqclient.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
+	rmqClient, err := rmqclientImpl.NewRmqClient(rocksmq.ClientOptions{Server: rocksmqserver.Rmq})
 	if err != nil {
 		return nil, err
 	}
@@ -153,32 +152,32 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 }
 
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	log.Info("kakfa broker ", zap.Any("kafka", f.KafkaAddress))
-	config := sarama.NewConfig()
-	config.Version = sarama.V2_8_0_0
-	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
+	kafkaClient, err := kafkaclientImpl.GetKafkaClientInstance(
+		[]string{f.KafkaAddress},
+		kafkaclientImpl.NewKafkaConfig())
+
 	if err != nil {
 		return nil, err
 	}
+
 	return NewMqMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	config := sarama.NewConfig()
-	config.Version = sarama.V2_8_0_0
-	config.Producer.Return.Successes = true
-	kafkaClient, err := mqclient.GetKafkaClientInstance([]string{f.KafkaAddress}, config)
+	kafkaClient, err := kafkaclientImpl.GetKafkaClientInstance(
+		[]string{f.KafkaAddress},
+		kafkaclientImpl.NewKafkaConfig())
 	if err != nil {
 		return nil, err
 	}
+
 	return NewMqTtMsgStream(ctx, f.ReceiveBufSize, f.KafkaBufSize, kafkaClient, f.dispatcherFactory.NewUnmarshalDispatcher())
 }
 
 func (f *KmsFactory) NewQueryMsgStream(ctx context.Context) (MsgStream, error) {
-
 	return f.NewMsgStream(ctx)
 }
+
 func NewKmsFactory() Factory {
 	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
