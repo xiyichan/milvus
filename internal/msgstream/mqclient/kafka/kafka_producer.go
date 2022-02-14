@@ -10,7 +10,7 @@ import (
 )
 
 type kafkaProducer struct {
-	p sarama.SyncProducer
+	p     sarama.SyncProducer
 	topic string
 }
 
@@ -30,5 +30,6 @@ func (kp *kafkaProducer) Send(ctx context.Context, message *mqclient.ProducerMes
 }
 
 func (kp *kafkaProducer) Close() {
-	kp.p.Close()
+	//kp.p.Close()
+
 }

@@ -36,6 +36,7 @@ func NewKafkaConfig() *sarama.Config {
 	config := sarama.NewConfig()
 	config.Version = sarama.V2_8_0_0
 	config.Producer.Return.Successes = true
+	config.Producer.MaxMessageBytes = 5 * 1024 * 1024
 	config.Consumer.Return.Errors = true
 	return config
 }
