@@ -65,9 +65,7 @@ func (gp *BaseTable) Init() {
 	log.Debug("config directory", zap.String("configDir", gp.configDir))
 
 	gp.loadFromMilvusYaml()
-
-	gp.tryloadFromEnv()
-
+	gp.tryLoadFromEnv()
 	gp.InitLogCfg()
 }
 
@@ -111,110 +109,11 @@ func (gp *BaseTable) loadFromMilvusYaml() {
 	}
 }
 
-func (gp *BaseTable) tryloadFromEnv() {
-	var err error
-	minioAddress := os.Getenv("MINIO_ADDRESS")
-	if minioAddress == "" {
-		minioHost, err := gp.Load("minio.address")
-		if err != nil {
-			panic(err)
-		}
-		port, err := gp.Load("minio.port")
-		if err != nil {
-			panic(err)
-		}
-		minioAddress = minioHost + ":" + port
-	}
-	gp.Save("_MinioAddress", minioAddress)
-
-	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
-	if etcdEndpoints == "" {
-		etcdEndpoints, err = gp.Load("etcd.endpoints")
-		if err != nil {
-			panic(err)
-		}
-	}
-	gp.Save("_EtcdEndpoints", etcdEndpoints)
-
-	pulsarAddress := os.Getenv("PULSAR_ADDRESS")
-	if pulsarAddress == "" {
-		pulsarHost, err := gp.Load("pulsar.address")
-		if err != nil {
-			panic(err)
-		}
-		port, err := gp.Load("pulsar.port")
-		if err != nil {
-			panic(err)
-		}
-		pulsarAddress = "pulsar://" + pulsarHost + ":" + port
-	}
-	gp.Save("_PulsarAddress", pulsarAddress)
-
-	kafkaAddress := os.Getenv("KAFKA_ADDRESS")
-	if kafkaAddress == "" {
-		kafkaHost, err := gp.Load("kafka.address")
-		if err != nil {
-			panic(err)
-		}
-		port, err := gp.Load("kafka.port")
-		if err != nil {
-			panic(err)
-		}
-		kafkaAddress = kafkaHost + ":" + port
-	}
-	gp.Save("_KafkaAddress", kafkaAddress)
-
-	rocksmqPath := os.Getenv("ROCKSMQ_PATH")
-	if rocksmqPath == "" {
-		path, err := gp.Load("rocksmq.path")
-		if err != nil {
-			panic(err)
-		}
-		rocksmqPath = path
-	}
-	gp.Save("_RocksmqPath", rocksmqPath)
-
-	insertBufferFlushSize := os.Getenv("DATA_NODE_IBUFSIZE")
-	if insertBufferFlushSize == "" {
-		insertBufferFlushSize = gp.LoadWithDefault("datanode.flush.insertBufSize", "16777216")
-	}
-	gp.Save("_DATANODE_INSERTBUFSIZE", insertBufferFlushSize)
-
-	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
-	if minioAccessKey == "" {
-		minioAccessKey, err = gp.Load("minio.accessKeyID")
-		if err != nil {
-			panic(err)
-		}
-	}
-	gp.Save("_MinioAccessKeyID", minioAccessKey)
-
-	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
-	if minioSecretKey == "" {
-		minioSecretKey, err = gp.Load("minio.secretAccessKey")
-		if err != nil {
-			panic(err)
-		}
-	}
-	gp.Save("_MinioSecretAccessKey", minioSecretKey)
-
-	minioUseSSL := os.Getenv("MINIO_USE_SSL")
-	if minioUseSSL == "" {
-		minioUseSSL, err = gp.Load("minio.useSSL")
-		if err != nil {
-			panic(err)
-		}
-	}
-	gp.Save("_MinioUseSSL", minioUseSSL)
-
-	minioBucketName := os.Getenv("MINIO_BUCKET_NAME")
-	if minioBucketName == "" {
-		minioBucketName, err = gp.Load("minio.bucketName")
-		if err != nil {
-			panic(err)
-		}
-	}
-	gp.Save("_MinioBucketName", minioBucketName)
+func (gp *BaseTable) tryLoadFromEnv() {
+	gp.loadEtcdConfig()
+	gp.loadMinioConfig()
+	gp.loadMQConfig()
+	gp.loadDataNodeConfig()
 
 	// try to load environment start with ENV_PREFIX
 	for _, e := range os.Environ() {
@@ -477,4 +376,143 @@ func (gp *BaseTable) SetLogger(id UniqueID) {
 	if gp.LogCfgFunc != nil {
 		gp.LogCfgFunc(gp.Log)
 	}
+}
+
+func (gp *BaseTable) loadPulsarConfig() bool {
+	pulsarAddress := os.Getenv("PULSAR_ADDRESS")
+
+	if pulsarAddress == "" {
+		pulsarHost, err := gp.Load("pulsar.address")
+		if err != nil {
+			return false
+		}
+		port, err := gp.Load("pulsar.port")
+		if err != nil {
+			return false
+		}
+
+		pulsarAddress = "pulsar://" + pulsarHost + ":" + port
+	}
+
+	gp.Save("_PulsarAddress", pulsarAddress)
+	return true
+}
+
+func (gp *BaseTable) loadKafkaConfig() bool {
+	kafkaAddress := os.Getenv("KAFKA_ADDRESS")
+
+	if kafkaAddress == "" {
+		kafkaHost, err := gp.Load("kafka.address")
+		if err != nil {
+			return false
+		}
+		port, err := gp.Load("kafka.port")
+		if err != nil {
+			return false
+		}
+
+		kafkaAddress = kafkaHost + ":" + port
+	}
+
+	gp.Save("_KafkaAddress", kafkaAddress)
+	return true
+}
+
+func (gp *BaseTable) loadRocksMQConfig() {
+	rocksmqPath := os.Getenv("ROCKSMQ_PATH")
+	if rocksmqPath == "" {
+		path, err := gp.Load("rocksmq.path")
+		if err != nil {
+			panic(err)
+		}
+		rocksmqPath = path
+	}
+	gp.Save("_RocksmqPath", rocksmqPath)
+}
+
+func (gp *BaseTable) loadMQConfig() {
+	pulasrConfigLoadRet := gp.loadPulsarConfig()
+	kafkaConfigLoadRet := gp.loadKafkaConfig()
+
+	if !pulasrConfigLoadRet && !kafkaConfigLoadRet {
+		panic("Please check MQ[pulsar|kafka] configuration, " +
+			"make sure address and port is correct!")
+	}
+
+	gp.loadRocksMQConfig()
+}
+
+func (gp *BaseTable) loadEtcdConfig() {
+	var err error
+	etcdEndpoints := os.Getenv("ETCD_ENDPOINTS")
+	if etcdEndpoints == "" {
+		etcdEndpoints, err = gp.Load("etcd.endpoints")
+		if err != nil {
+			panic(err)
+		}
+	}
+	gp.Save("_EtcdEndpoints", etcdEndpoints)
+}
+
+func (gp *BaseTable) loadMinioConfig() {
+	var err error
+
+	minioAddress := os.Getenv("MINIO_ADDRESS")
+	if minioAddress == "" {
+		minioHost, err := gp.Load("minio.address")
+		if err != nil {
+			panic(err)
+		}
+		port, err := gp.Load("minio.port")
+		if err != nil {
+			panic(err)
+		}
+		minioAddress = minioHost + ":" + port
+	}
+	gp.Save("_MinioAddress", minioAddress)
+
+	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
+	if minioAccessKey == "" {
+		minioAccessKey, err = gp.Load("minio.accessKeyID")
+		if err != nil {
+			panic(err)
+		}
+	}
+	gp.Save("_MinioAccessKeyID", minioAccessKey)
+
+	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
+	if minioSecretKey == "" {
+		minioSecretKey, err = gp.Load("minio.secretAccessKey")
+		if err != nil {
+			panic(err)
+		}
+	}
+	gp.Save("_MinioSecretAccessKey", minioSecretKey)
+
+	minioUseSSL := os.Getenv("MINIO_USE_SSL")
+	if minioUseSSL == "" {
+		minioUseSSL, err = gp.Load("minio.useSSL")
+		if err != nil {
+			panic(err)
+		}
+	}
+	gp.Save("_MinioUseSSL", minioUseSSL)
+
+	minioBucketName := os.Getenv("MINIO_BUCKET_NAME")
+	if minioBucketName == "" {
+		minioBucketName, err = gp.Load("minio.bucketName")
+		if err != nil {
+			panic(err)
+		}
+	}
+	gp.Save("_MinioBucketName", minioBucketName)
+}
+
+func (gp *BaseTable) loadDataNodeConfig() {
+	insertBufferFlushSize := os.Getenv("DATA_NODE_IBUFSIZE")
+	if insertBufferFlushSize == "" {
+		insertBufferFlushSize = gp.LoadWithDefault("datanode.flush.insertBufSize",
+			"16777216")
+	}
+	gp.Save("_DATANODE_INSERTBUFSIZE", insertBufferFlushSize)
 }

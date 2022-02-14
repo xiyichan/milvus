@@ -2,16 +2,15 @@ package kafka
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
+	"go.uber.org/zap"
 
 	"github.com/Shopify/sarama"
-	"github.com/milvus-io/milvus/internal/log"
-	"go.uber.org/zap"
 )
 
 type kafkaProducer struct {
 	p sarama.SyncProducer
-	//c     sarama.Client
 	topic string
 }
 
@@ -27,7 +26,7 @@ func (kp *kafkaProducer) Send(ctx context.Context, message *mqclient.ProducerMes
 		log.Debug("> message sent to ", zap.Any("message length", len(message.Payload)), zap.Any("topic", kp.topic), zap.Any("partition", partition), zap.Any("offset", offset))
 	}
 
-	return &kafkaID{}, nil
+	return &kafkaID{messageID: offset}, err
 }
 
 func (kp *kafkaProducer) Close() {

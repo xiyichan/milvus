@@ -36,6 +36,7 @@ type ServiceParam struct {
 
 	EtcdCfg    EtcdConfig
 	PulsarCfg  PulsarConfig
+	KafkaCfg   KafkaConfig
 	RocksmqCfg RocksmqConfig
 	MinioCfg   MinioConfig
 }
@@ -45,6 +46,7 @@ func (p *ServiceParam) Init() {
 
 	p.EtcdCfg.init(&p.BaseTable)
 	p.PulsarCfg.init(&p.BaseTable)
+	p.KafkaCfg.init(&p.BaseTable)
 	p.RocksmqCfg.init(&p.BaseTable)
 	p.MinioCfg.init(&p.BaseTable)
 }
@@ -167,6 +169,25 @@ func (p *PulsarConfig) initMaxMessageSize() {
 			p.MaxMessageSize = maxMessageSize
 		}
 	}
+}
+
+// --- kafka ---
+type KafkaConfig struct {
+	Base *BaseTable
+	Address    string
+}
+
+func (k *KafkaConfig) init(base *BaseTable) {
+	k.Base = base
+	k.initAddress()
+}
+
+func (k *KafkaConfig) initAddress() {
+	addr, err := k.Base.Load("_KafkaAddress")
+	if err != nil {
+		panic(err)
+	}
+	k.Address = addr
 }
 
 ///////////////////////////////////////////////////////////////////////////////

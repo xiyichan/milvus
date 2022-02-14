@@ -89,9 +89,8 @@ func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Con
 		topicName: options.Topic,
 		closeCh:   make(chan struct{}),
 		groupID:   options.SubscriptionName}
-	//consumer := &kafkaConsumer{c: kc.client, g: g, offset: sarama.OffsetOldest, topicName: options.Topic, closeCh: make(chan struct{}), groupID: options.SubscriptionName}
-	return consumer, nil
 
+	return consumer, nil
 }
 
 func (kc *kafkaClient) EarliestMessageID() mqclient.MessageID {

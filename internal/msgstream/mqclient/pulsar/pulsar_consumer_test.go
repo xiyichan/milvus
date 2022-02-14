@@ -26,7 +26,7 @@ import (
 )
 
 func TestPulsarConsumer_Subscription(t *testing.T) {
-	pulsarAddress, _ := mqclient.Params.Load("_PulsarAddress")
+	pulsarAddress, _ := Params.Load("_PulsarAddress")
 	pc, err := GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
 	assert.Nil(t, err)
 	defer pc.Close()
@@ -58,7 +58,7 @@ func Test_PatchEarliestMessageID(t *testing.T) {
 }
 
 func TestPulsarConsumer_Close(t *testing.T) {
-	pulsarAddress, _ := mqclient.Params.Load("_PulsarAddress")
+	pulsarAddress, _ := Params.Load("_PulsarAddress")
 	pc, err := GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
 	assert.Nil(t, err)
 

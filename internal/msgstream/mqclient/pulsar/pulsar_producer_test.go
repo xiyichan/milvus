@@ -26,7 +26,7 @@ import (
 )
 
 func TestPulsarProducer(t *testing.T) {
-	pulsarAddress, _ := mqclient.Params.Load("_PulsarAddress")
+	pulsarAddress, _ := Params.Load("_PulsarAddress")
 	pc, err := GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
 	defer pc.Close()
 	assert.NoError(t, err)

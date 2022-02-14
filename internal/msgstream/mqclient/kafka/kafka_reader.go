@@ -8,51 +8,6 @@ import (
 	"go.uber.org/zap"
 )
 
-//type kafkaReader struct {
-//	r                       sarama.Consumer
-//	cp                      sarama.PartitionConsumer
-//	cg sarama.ConsumerGroup
-//	name                    string
-//	offset                  int64
-//	topicName               string
-//	StartMessageIDInclusive bool
-//	SubscriptionRolePrefix  string
-//}
-//
-//func (kr *kafkaReader) Topic() string {
-//	return kr.topicName
-//}
-//func (kr *kafkaReader) Next(ctx context.Context) (Message, error) {
-//	select {
-//	case kMsg := <-kr.cp.Messages():
-//		msg := &kafkaMessage{msg: kMsg}
-//		kr.offset = msg.msg.Offset
-//		return msg, nil
-//	case err := <-kr.cp.Errors():
-//		return nil, err
-//	}
-//}
-//
-//func (kr *kafkaReader) HasNext() bool {
-//
-//	hwmo := kr.cp.HighWaterMarkOffset()
-//	if kr.offset <= hwmo {
-//		return true
-//	} else {
-//		return false
-//	}
-//}
-//
-//func (kr *kafkaReader) Close() {
-//	kr.r.Close()
-//}
-//func (kr *kafkaReader) Seek(id MessageID) error {
-//	var err error
-//	kr.offset = id.(*kafkaID).messageID
-//	kr.cp, err = kr.r.ConsumePartition(kr.topicName, 0, kr.offset)
-//	return err
-//}
-
 type kafkaReader struct {
 	//r                       sarama.Consumer
 	//cp                      sarama.PartitionConsumer
@@ -112,8 +67,7 @@ func (kr *kafkaReader) Next(ctx context.Context) (mqclient.Message, error) {
 			topics := []string{kr.topicName}
 			err = kr.cg.Consume(ctx, topics, kr)
 			if err != nil {
-				log.Info("err reader topic", zap.Any("topic", topics))
-				log.Error("kafka reader consume err", zap.Error(err))
+				log.Error("kafka reader consume err", zap.Any("topic", topics), zap.Error(err))
 				panic(err)
 			}
 			if ctx.Err() != nil {
@@ -148,9 +102,7 @@ func (kr *kafkaReader) HasNext() bool {
 }
 
 func (kr *kafkaReader) Close() {
-
 	//log.Info("关闭信号")
-
 	//log.Info("协程所有关闭")
 	err := kr.cg.Close()
 	if err != nil {
@@ -159,6 +111,7 @@ func (kr *kafkaReader) Close() {
 
 	log.Info("close consumer success")
 }
+
 func (kr *kafkaReader) Seek(id mqclient.MessageID) error {
 	kr.offset = id.(*kafkaID).messageID
 	return nil

@@ -2,7 +2,9 @@ package kafka
 
 import (
 	"github.com/Shopify/sarama"
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
+	"go.uber.org/zap"
 )
 
 //
@@ -23,6 +25,7 @@ func (kc *kafkaConsumer) Chan() <-chan mqclient.Message {
 		kc.msgChannel = make(chan mqclient.Message)
 		partitionConsumer, err := kc.c.ConsumePartition(kc.topicName, 0, kc.offset)
 		if err != nil {
+			log.Error("[Kafka] consumePartition err", zap.String("topic", kc.topicName), zap.Int64("offset", kc.offset))
 			panic(err)
 		}
 		go func(pc *sarama.PartitionConsumer) {
@@ -44,14 +47,17 @@ func (kc *kafkaConsumer) Chan() <-chan mqclient.Message {
 	}
 	return kc.msgChannel
 }
+
 func (kc *kafkaConsumer) Seek(id mqclient.MessageID, inclusive bool) error {
 	kc.offset = id.(*kafkaID).messageID
 
 	return nil
 }
+
 func (kc *kafkaConsumer) Ack(message mqclient.Message) {
 	//log.Info("ack msg", zap.Any("msg", len(message.Payload())))
 }
+
 func (kc *kafkaConsumer) Close() {
 	close(kc.closeCh)
 	kc.c.Close()

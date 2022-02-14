@@ -30,7 +30,7 @@ import (
 
 func TestPulsarReader(t *testing.T) {
 	ctx := context.Background()
-	pulsarAddress, _ := mqclient.Params.Load("_PulsarAddress")
+	pulsarAddress, _ := Params.Load("_PulsarAddress")
 	pc, err := GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
 	assert.Nil(t, err)
 	defer pc.Close()
