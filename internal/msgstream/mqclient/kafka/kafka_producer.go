@@ -30,6 +30,7 @@ func (kp *kafkaProducer) Send(ctx context.Context, message *mqclient.ProducerMes
 }
 
 func (kp *kafkaProducer) Close() {
-	//kp.p.Close()
-
+	log.Info("kafka producer close")
+	kp.p.Close()
+	log.Info("kafka producer close success")
 }
