@@ -41,6 +41,11 @@ func (stNode *serviceTimeNode) Name() string {
 
 // Close would close serviceTimeNode
 func (stNode *serviceTimeNode) Close() {
+	stNode.IsClosed = true
+}
+
+func (stNode *serviceTimeNode) IsClose() bool {
+	return stNode.IsClosed
 }
 
 // Operate handles input messages, to execute insert operations
@@ -91,7 +96,7 @@ func newServiceTimeNode(ctx context.Context,
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
-	baseNode := baseNode{}
+	baseNode := baseNode{IsClosed: false}
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
