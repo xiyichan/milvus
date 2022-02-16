@@ -151,6 +151,11 @@ func (ibNode *insertBufferNode) Close() {
 	if ibNode.timeTickStream != nil {
 		ibNode.timeTickStream.Close()
 	}
+	ibNode.IsClosed = true
+}
+
+func (ibNode *insertBufferNode) IsClose() bool {
+	return ibNode.IsClosed
 }
 
 func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
@@ -706,7 +711,7 @@ func (ibNode *insertBufferNode) getCollectionandPartitionIDbySegID(segmentID Uni
 func newInsertBufferNode(ctx context.Context, flushCh <-chan flushMsg, fm flushManager,
 	flushingSegCache *Cache, config *nodeConfig) (*insertBufferNode, error) {
 
-	baseNode := BaseNode{}
+	baseNode := BaseNode{IsClosed: false}
 	baseNode.SetMaxQueueLength(config.maxQueueLength)
 	baseNode.SetMaxParallelism(config.maxParallelism)
 

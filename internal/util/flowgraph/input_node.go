@@ -48,6 +48,12 @@ func (inNode *InputNode) Close() {
 	log.Debug("message stream closed",
 		zap.String("node name", inNode.name),
 	)
+
+	inNode.IsClosed = true
+}
+
+func (inNode *InputNode) IsClose() bool {
+	return inNode.IsClosed
 }
 
 // Name returns node name
@@ -93,7 +99,7 @@ func (inNode *InputNode) Operate(in []Msg) []Msg {
 
 // NewInputNode composes an InputNode with provided MsgStream, name and parameters
 func NewInputNode(inStream msgstream.MsgStream, nodeName string, maxQueueLength int32, maxParallelism int32) *InputNode {
-	baseNode := BaseNode{}
+	baseNode := BaseNode{IsClosed: false}
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 

@@ -42,12 +42,14 @@ type Node interface {
 	IsInputNode() bool
 	Start()
 	Close()
+	IsClose() bool
 }
 
 // BaseNode defines some common node attributes and behavior
 type BaseNode struct {
 	maxQueueLength int32
 	maxParallelism int32
+	IsClosed bool
 }
 
 // nodeCtx maintains the running context for a Node in flowgragh
@@ -97,6 +99,11 @@ func (nodeCtx *nodeCtx) work() {
 				inputs = nodeCtx.inputMessages
 			}
 			n := nodeCtx.node
+			if n.IsClose() {
+				log.Warn("Skip to process msg,", zap.Any("flow graph node", n.Name()))
+				continue
+			}
+
 			res = n.Operate(inputs)
 
 			if enableTtChecker {
@@ -238,3 +245,8 @@ func (node *BaseNode) Start() {}
 
 // Close implementing Node, base node does nothing when stops
 func (node *BaseNode) Close() {}
+
+func (node *BaseNode) IsClose() bool {
+	return false
+}
+

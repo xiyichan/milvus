@@ -96,6 +96,11 @@ func (dn *deleteNode) Name() string {
 
 func (dn *deleteNode) Close() {
 	log.Info("Flowgraph Delete Node closing")
+	dn.IsClosed = true
+}
+
+func (dn *deleteNode) IsClose() bool {
+	return dn.IsClosed
 }
 
 func (dn *deleteNode) bufferDeleteMsg(msg *msgstream.DeleteMsg, tr TimeRange) error {
@@ -293,7 +298,7 @@ func (dn *deleteNode) filterSegmentByPK(partID UniqueID, pks []int64) map[int64]
 }
 
 func newDeleteNode(ctx context.Context, fm flushManager, sig chan<- string, config *nodeConfig) (*deleteNode, error) {
-	baseNode := BaseNode{}
+	baseNode := BaseNode{IsClosed: false}
 	baseNode.SetMaxQueueLength(config.maxQueueLength)
 	baseNode.SetMaxParallelism(config.maxParallelism)
 

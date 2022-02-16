@@ -263,11 +263,16 @@ func (ddn *ddNode) Close() {
 	if ddn.deltaMsgStream != nil {
 		ddn.deltaMsgStream.Close()
 	}
+	ddn.IsClosed = true
+}
+
+func (ddn *ddNode) IsClose() bool {
+	return ddn.IsClosed
 }
 
 func newDDNode(ctx context.Context, collID UniqueID, vchanInfo *datapb.VchannelInfo,
 	msFactory msgstream.Factory, compactor *compactionExecutor) *ddNode {
-	baseNode := BaseNode{}
+	baseNode := BaseNode{IsClosed: false}
 	baseNode.SetMaxQueueLength(Params.DataNodeCfg.FlowGraphMaxQueueLength)
 	baseNode.SetMaxParallelism(Params.DataNodeCfg.FlowGraphMaxParallelism)
 
