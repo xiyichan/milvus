@@ -2,7 +2,7 @@ package kafka
 
 import (
 	"errors"
-	sarama "github.com/Shopify/sarama"
+	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 	"go.uber.org/zap"
@@ -34,9 +34,10 @@ func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient,
 
 func NewKafkaConfig() *sarama.Config {
 	config := sarama.NewConfig()
-	config.Version = sarama.V2_8_0_0
+	config.Version = sarama.MaxVersion
 	config.Producer.Return.Successes = true
-	config.Producer.MaxMessageBytes = 5 * 1024 * 1024
+	config.Producer.MaxMessageBytes = 10 * 1024 * 1024
+
 	config.Consumer.Return.Errors = true
 	return config
 }
