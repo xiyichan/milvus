@@ -34,9 +34,9 @@ func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient,
 
 func NewKafkaConfig() *sarama.Config {
 	config := sarama.NewConfig()
-	config.Version = sarama.MaxVersion
+	config.Version = sarama.V3_1_0_0
 	config.Producer.Return.Successes = true
-	config.Producer.MaxMessageBytes = 10 * 1024 * 1024
+	config.Producer.MaxMessageBytes = 5 * 1024 * 1024
 
 	config.Consumer.Return.Errors = true
 	return config
@@ -62,9 +62,6 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
-
-	//cp, err := c.ConsumePartition(options.Topic, 0, options.StartMessageID.(*kafkaID).messageID)
-	//reader := &kafkaReader{r: c, cp: cp, offset: options.StartMessageID.(*kafkaID).messageID, topicName: options.Topic}
 	reader := &kafkaReader{
 		cg:         g,
 		readFlag:   true,
@@ -77,9 +74,7 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 }
 
 func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Consumer, error) {
-	log.Info("kafka consumer name", zap.Any("name", options.SubscriptionName))
 	c, err := sarama.NewConsumer(kc.broker, NewKafkaConfig())
-	//g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, config)
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)

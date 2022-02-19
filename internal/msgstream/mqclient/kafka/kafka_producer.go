@@ -18,7 +18,6 @@ func (kp *kafkaProducer) Topic() string {
 	return kp.topic
 }
 func (kp *kafkaProducer) Send(ctx context.Context, message *mqclient.ProducerMessage) (mqclient.MessageID, error) {
-	log.Info("kafka send topic", zap.Any("topic", kp.topic))
 	msg := &sarama.ProducerMessage{Topic: kp.topic, Value: sarama.ByteEncoder(message.Payload), Partition: 0}
 	partition, offset, err := kp.p.SendMessage(msg)
 	if err != nil {
@@ -31,7 +30,5 @@ func (kp *kafkaProducer) Send(ctx context.Context, message *mqclient.ProducerMes
 }
 
 func (kp *kafkaProducer) Close() {
-	log.Info("kafka producer close", zap.Any("topic", kp.topic))
 	kp.p.Close()
-	log.Info("kafka producer close success")
 }

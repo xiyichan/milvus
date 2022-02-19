@@ -12,8 +12,6 @@ type kafkaID struct {
 var _ mqclient.MessageID = &kafkaID{}
 
 func (kid *kafkaID) Serialize() []byte {
-	//log.Info("123456")
-	//log.Info("SerializeKafkaID", zap.Any("kafkaID", kid.messageID))
 	return SerializeKafkaID(kid.messageID)
 }
 
@@ -35,7 +33,6 @@ func (kid *kafkaID) PartitionIdx() int32 {
 
 func SerializeKafkaID(messageID int64) []byte {
 	b := make([]byte, 8)
-	//log.Info("SerializeKafkaID1", zap.Any("kafkaID", messageID))
 	common.Endian.PutUint64(b, uint64(messageID))
 	return b
 }
