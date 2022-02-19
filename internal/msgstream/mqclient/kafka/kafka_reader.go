@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
@@ -34,6 +35,7 @@ func (kr *kafkaReader) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sara
 	for msg := range claim.Messages() {
 		kr.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
+		fmt.Println(msg.Value)
 		if msg.Offset == kr.highWaterMarkOffset {
 			close(kr.closeCh)
 		}

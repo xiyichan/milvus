@@ -52,15 +52,16 @@ func TestKafkaReader(t *testing.T) {
 
 	str := reader.Topic()
 	assert.NotNil(t, str)
-
+	fmt.Println("11111")
 	for i := 0; i < N; i++ {
 		revMsg, err := reader.Next(ctx)
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)
 	}
-
+	fmt.Println("22222")
 	readerOfStartMessageID, err := kc.CreateReader(mqclient.ReaderOptions{
 		Topic:                   topic,
+		Name:                    "reader_of_test",
 		StartMessageID:          seekID,
 		StartMessageIDInclusive: true,
 	})

@@ -356,7 +356,7 @@ func TestKafkaClient_Consume2(t *testing.T) {
 	// stop Consume2
 	cancel()
 	assert.Equal(t, len(arr), total1+total2)
-	assert.Equal(t, 7, total3)
+	assert.Equal(t, len(arr), total3) //TODO:different pulsar
 
 	log.Info("main done")
 }
