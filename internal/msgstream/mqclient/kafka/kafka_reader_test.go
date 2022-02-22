@@ -77,6 +77,7 @@ func TestKafkaReader(t *testing.T) {
 
 	readerOfSeek, err := kc.CreateReader(mqclient.ReaderOptions{
 		Topic:          topic,
+		Name:           "reader_of_seek",
 		StartMessageID: kc.EarliestMessageID(),
 	})
 	assert.Nil(t, err)

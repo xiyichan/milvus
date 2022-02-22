@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
@@ -58,6 +59,7 @@ func (kc *kafkaClient) CreateProducer(options mqclient.ProducerOptions) (mqclien
 
 func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Reader, error) {
 	g, err := sarama.NewConsumerGroup(kc.broker, options.Name, NewKafkaConfig())
+	fmt.Println("reader name", options.Name)
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
@@ -67,7 +69,7 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 		name:       options.Name,
 		readFlag:   true,
 		closeCh:    make(chan struct{}),
-		msgChannel: make(chan mqclient.Message),
+		msgChannel: make(chan mqclient.Message, 10),
 		offset:     options.StartMessageID.(*kafkaID).messageID,
 		topicName:  options.Topic}
 
