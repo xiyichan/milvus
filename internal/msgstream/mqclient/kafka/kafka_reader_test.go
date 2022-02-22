@@ -52,8 +52,8 @@ func TestKafkaReader(t *testing.T) {
 
 	str := reader.Topic()
 	assert.NotNil(t, str)
-	fmt.Println("11111")
 	for i := 0; i < N; i++ {
+		fmt.Println("ture", i)
 		revMsg, err := reader.Next(ctx)
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)

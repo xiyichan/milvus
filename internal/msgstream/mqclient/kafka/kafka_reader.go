@@ -23,7 +23,8 @@ type kafkaReader struct {
 }
 
 func (kr *kafkaReader) Setup(sess sarama.ConsumerGroupSession) error {
-	sess.ResetOffset(kr.topicName, 0, kr.offset, "modified_meta")
+	fmt.Println("resetoffset", kr.topicName, kr.name)
+	sess.ResetOffset(kr.topicName, 0, 0, "test")
 
 	return nil
 }
@@ -32,15 +33,17 @@ func (kr *kafkaReader) Cleanup(sess sarama.ConsumerGroupSession) error {
 
 }
 func (kr *kafkaReader) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	kr.highWaterMarkOffset = claim.HighWaterMarkOffset()
+	fmt.Println("higtWater", claim.HighWaterMarkOffset(), kr.offset)
 	for msg := range claim.Messages() {
 		kr.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
-		fmt.Println(msg.Value)
+		fmt.Println("msg", msg.Value)
 		if msg.Offset == kr.highWaterMarkOffset {
 			close(kr.closeCh)
 		}
 	}
-
+	fmt.Println(333)
 	return nil
 }
 
@@ -51,8 +54,10 @@ func (kr *kafkaReader) Next(ctx context.Context) (mqclient.Message, error) {
 	var err error
 	if kr.readFlag == true {
 		for {
+			fmt.Println("11111")
 			topics := []string{kr.topicName}
 			err = kr.cg.Consume(ctx, topics, kr)
+			fmt.Println("22222")
 			if err != nil {
 				log.Error("kafka reader consume err", zap.Any("topic", topics), zap.Error(err))
 				panic(err)
@@ -62,6 +67,7 @@ func (kr *kafkaReader) Next(ctx context.Context) (mqclient.Message, error) {
 				return nil, ctx.Err()
 			}
 			_, ok := <-kr.closeCh
+			fmt.Println("ok", ok)
 			if !ok {
 				close(kr.msgChannel)
 				kr.readFlag = false

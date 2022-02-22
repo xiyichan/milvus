@@ -37,7 +37,7 @@ func NewKafkaConfig() *sarama.Config {
 	config.Version = sarama.V3_1_0_0
 	config.Producer.Return.Successes = true
 	config.Producer.MaxMessageBytes = 5 * 1024 * 1024
-
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 	config.Consumer.Return.Errors = true
 	return config
 }
@@ -64,6 +64,7 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 	}
 	reader := &kafkaReader{
 		cg:         g,
+		name:       options.Name,
 		readFlag:   true,
 		closeCh:    make(chan struct{}),
 		msgChannel: make(chan mqclient.Message),
@@ -91,7 +92,8 @@ func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Con
 }
 
 func (kc *kafkaClient) EarliestMessageID() mqclient.MessageID {
-	return &kafkaID{messageID: sarama.OffsetNewest}
+	return &kafkaID{messageID: sarama.OffsetOldest}
+	//return &kafkaID{messageID: 0}
 }
 
 func (kc *kafkaClient) StringToMsgID(id string) (mqclient.MessageID, error) {
