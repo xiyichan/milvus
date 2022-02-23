@@ -16,6 +16,7 @@ type kafkaReader struct {
 	topicName               string
 	msgChannel              chan mqclient.Message
 	closeCh                 chan struct{}
+	closeFlag               bool
 	highWaterMarkOffset     int64
 	readFlag                bool
 	startMessageIDInclusive bool
@@ -44,6 +45,7 @@ func (kr *kafkaReader) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sara
 		if msg.Offset == kr.highWaterMarkOffset-1 {
 			fmt.Println("close")
 			//close(kr.closeCh)
+			kr.closeFlag = true
 		}
 	}
 	fmt.Println(333)
@@ -73,9 +75,8 @@ func (kr *kafkaReader) Next(ctx context.Context) (mqclient.Message, error) {
 				//	log.Info("ctx err", zap.Any("ctx", ctx.Err()))
 				//	return nil, ctx.Err()
 				//}
-				select {
-				case <-kr.closeCh:
-					break
+				if kr.closeFlag == true {
+					return
 				}
 			}
 		}()
@@ -125,7 +126,7 @@ func (kr *kafkaReader) Close() {
 	if err != nil {
 		log.Error("err", zap.Any("err", err))
 	}
-	close(kr.closeCh)
+	//close(kr.closeCh)
 	close(kr.msgChannel)
 }
 

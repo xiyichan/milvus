@@ -168,7 +168,7 @@ func Consume3(ctx context.Context, t *testing.T, kc *kafkaClient, topic string, 
 	}
 }
 
-func TestKafkalient_Consume1(t *testing.T) {
+func TestKafkaClient_Consume1(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
 	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
 	defer kc.Close()
@@ -195,7 +195,7 @@ func TestKafkalient_Consume1(t *testing.T) {
 	ctx1, cancel1 := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel1()
 	Consume1(ctx1, t, kc, topic, subName, c, &total1)
-
+	log.Info("=================")
 	// record the last received message id
 	lastMsgID := <-c
 	log.Info("msg", zap.Any("lastMsgID", lastMsgID))

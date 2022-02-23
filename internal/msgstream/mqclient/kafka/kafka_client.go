@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type kafkaClient struct {
@@ -58,15 +59,16 @@ func (kc *kafkaClient) CreateProducer(options mqclient.ProducerOptions) (mqclien
 }
 
 func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Reader, error) {
-	g, err := sarama.NewConsumerGroup(kc.broker, options.Name, NewKafkaConfig())
-	fmt.Println("reader name", options.Name)
+	groupid := time.Now().String()
+	g, err := sarama.NewConsumerGroup(kc.broker, groupid, NewKafkaConfig())
+	fmt.Println("reader name", groupid)
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
 	reader := &kafkaReader{
 		cg:         g,
-		name:       options.Name,
+		name:       groupid,
 		readFlag:   true,
 		closeCh:    make(chan struct{}),
 		msgChannel: make(chan mqclient.Message, 10),
@@ -77,14 +79,15 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 }
 
 func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Consumer, error) {
-	c, err := sarama.NewConsumer(kc.broker, NewKafkaConfig())
+	//c, err := sarama.NewConsumer(kc.broker, NewKafkaConfig())
+	g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, NewKafkaConfig())
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
 
 	consumer := &kafkaConsumer{
-		c:         c,
+		c:         g,
 		offset:    sarama.OffsetOldest,
 		topicName: options.Topic,
 		closeCh:   make(chan struct{}),
