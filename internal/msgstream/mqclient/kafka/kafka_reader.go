@@ -25,7 +25,7 @@ type kafkaReader struct {
 }
 
 func (kr *kafkaReader) Setup(sess sarama.ConsumerGroupSession) error {
-	fmt.Println("resetoffset", kr.topicName, kr.name)
+	//fmt.Println("resetoffset", kr.topicName, kr.name)
 	sess.ResetOffset(kr.topicName, 0, kr.offset, "test")
 
 	return nil
@@ -36,7 +36,7 @@ func (kr *kafkaReader) Cleanup(sess sarama.ConsumerGroupSession) error {
 }
 func (kr *kafkaReader) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	kr.highWaterMarkOffset = claim.HighWaterMarkOffset()
-	fmt.Println("higtWater", claim.HighWaterMarkOffset(), kr.offset)
+	//fmt.Println("higtWater", claim.HighWaterMarkOffset(), kr.offset)
 	for msg := range claim.Messages() {
 		kr.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")

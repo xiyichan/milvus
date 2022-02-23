@@ -79,15 +79,15 @@ func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Re
 }
 
 func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Consumer, error) {
-	//c, err := sarama.NewConsumer(kc.broker, NewKafkaConfig())
-	g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, NewKafkaConfig())
+	c, err := sarama.NewConsumer(kc.broker, NewKafkaConfig())
+	//g, err := sarama.NewConsumerGroup(kc.broker, options.SubscriptionName, NewKafkaConfig())
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		panic(err)
 	}
 
 	consumer := &kafkaConsumer{
-		c:         g,
+		c:         c,
 		offset:    sarama.OffsetOldest,
 		topicName: options.Topic,
 		closeCh:   make(chan struct{}),
