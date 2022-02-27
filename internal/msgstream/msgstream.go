@@ -19,8 +19,8 @@ package msgstream
 import (
 	"context"
 
-	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 

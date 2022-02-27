@@ -152,9 +152,10 @@ func (f *KmsFactory) SetParams(params map[string]interface{}) error {
 }
 
 func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := kafkaclientImpl.GetKafkaClientInstance(
+	kafkaClient, err := kafkaclientImpl.NewKafkaClient(
 		[]string{f.KafkaAddress},
-		kafkaclientImpl.NewKafkaConfig())
+		kafkaclientImpl.NewKafkaConfig(),
+		ctx)
 
 	if err != nil {
 		return nil, err
@@ -164,9 +165,10 @@ func (f *KmsFactory) NewMsgStream(ctx context.Context) (MsgStream, error) {
 }
 
 func (f *KmsFactory) NewTtMsgStream(ctx context.Context) (MsgStream, error) {
-	kafkaClient, err := kafkaclientImpl.GetKafkaClientInstance(
+	kafkaClient, err := kafkaclientImpl.NewKafkaClient(
 		[]string{f.KafkaAddress},
-		kafkaclientImpl.NewKafkaConfig())
+		kafkaclientImpl.NewKafkaConfig(),
+		ctx)
 	if err != nil {
 		return nil, err
 	}

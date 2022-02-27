@@ -13,7 +13,7 @@ import (
 func TestKafkaReader(t *testing.T) {
 	ctx := context.Background()
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	assert.Nil(t, err)
 	defer kc.Close()
 
@@ -53,12 +53,11 @@ func TestKafkaReader(t *testing.T) {
 	str := reader.Topic()
 	assert.NotNil(t, str)
 	for i := 0; i < N; i++ {
-		fmt.Println("ture", i)
 		revMsg, err := reader.Next(ctx)
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)
 	}
-	fmt.Println("22222")
+	fmt.Println("22222", seekID)
 	readerOfStartMessageID, err := kc.CreateReader(mqclient.ReaderOptions{
 		Topic:                   topic,
 		Name:                    "reader_of_test",
@@ -83,14 +82,19 @@ func TestKafkaReader(t *testing.T) {
 	assert.Nil(t, err)
 	defer readerOfSeek.Close()
 
-	err = reader.Seek(seekID)
-	assert.Nil(t, err)
+	fmt.Println(seekID, "=========== 44444")
 
-	for i := 4; i < N; i++ {
+	err = reader.Seek(seekID)
+	fmt.Println(seekID, "=========== 44444 seek")
+
+	assert.Nil(t, err)
+	for readerOfSeek.HasNext() {
 		assert.True(t, readerOfSeek.HasNext())
 		revMsg, err := readerOfSeek.Next(ctx)
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)
 	}
+
+	fmt.Println(seekID, "=========== 44444 finished")
 
 }

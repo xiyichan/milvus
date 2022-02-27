@@ -8,7 +8,7 @@ import (
 
 func TestKafkaConsumer_Subscription(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	assert.Nil(t, err)
 	defer kc.Close()
 
@@ -24,7 +24,7 @@ func TestKafkaConsumer_Subscription(t *testing.T) {
 
 func TestKafkaConsumer_Close(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	assert.Nil(t, err)
 	defer kc.Close()
 

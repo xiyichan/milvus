@@ -19,6 +19,7 @@ import (
 )
 
 var Params paramtable.BaseTable
+var Ctx = context.Background()
 
 func TestMain(m *testing.M) {
 	Params.Init()
@@ -55,6 +56,7 @@ func Produce(ctx context.Context, t *testing.T, kc *kafkaClient, topic string, a
 	}
 	log.Info("Produce done")
 }
+
 func VerifyMessage(t *testing.T, msg mqclient.Message) {
 	pload := BytesToInt(msg.Payload())
 	log.Info("RECV", zap.Any("v", pload))
@@ -170,7 +172,7 @@ func Consume3(ctx context.Context, t *testing.T, kc *kafkaClient, topic string, 
 
 func TestKafkaClient_Consume1(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	defer kc.Close()
 	assert.NoError(t, err)
 	assert.NotNil(t, kc)
@@ -181,7 +183,7 @@ func TestKafkaClient_Consume1(t *testing.T) {
 	arr := []int{111, 222, 333, 444, 555, 666, 777}
 	c := make(chan mqclient.MessageID, 1)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(Ctx)
 
 	var total1 int
 	var total2 int
@@ -313,7 +315,7 @@ func Consume23(ctx context.Context, t *testing.T, kc *kafkaClient, topic string,
 
 func TestKafkaClient_Consume2(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	defer kc.Close()
 	assert.NoError(t, err)
 	assert.NotNil(t, kc)
@@ -324,7 +326,7 @@ func TestKafkaClient_Consume2(t *testing.T) {
 	arr := []int{111, 222, 333, 444, 555, 666, 777}
 	c := make(chan mqclient.MessageID, 1)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(Ctx)
 
 	var total1 int
 	var total2 int
@@ -363,13 +365,12 @@ func TestKafkaClient_Consume2(t *testing.T) {
 
 func TestKafkaClient_SeekPosition(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	defer kc.Close()
 	assert.NoError(t, err)
 	assert.NotNil(t, kc)
 	rand.Seed(time.Now().UnixNano())
 
-	ctx := context.Background()
 	topic := fmt.Sprintf("test-topic-%d", rand.Int())
 	//subName := fmt.Sprintf("test-subname-%d", rand.Int())
 
@@ -385,7 +386,7 @@ func TestKafkaClient_SeekPosition(t *testing.T) {
 			Payload:    IntToBytes(v),
 			Properties: map[string]string{},
 		}
-		id, err := producer.Send(ctx, msg)
+		id, err := producer.Send(Ctx, msg)
 		ids = append(ids, id)
 		assert.Nil(t, err)
 	}
@@ -428,13 +429,12 @@ func TestKafkaClient_SeekPosition(t *testing.T) {
 
 func TestKafkaClient_SeekLatest(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	defer kc.Close()
 	assert.NoError(t, err)
 	assert.NotNil(t, kc)
 	rand.Seed(time.Now().UnixNano())
 
-	ctx := context.Background()
 	topic := fmt.Sprintf("test-topic-%d", rand.Int())
 	//subName := fmt.Sprintf("test-subname-%d", rand.Int())
 
@@ -450,7 +450,7 @@ func TestKafkaClient_SeekLatest(t *testing.T) {
 			Payload:    IntToBytes(v),
 			Properties: map[string]string{},
 		}
-		_, err = producer.Send(ctx, msg)
+		_, err = producer.Send(Ctx, msg)
 		assert.Nil(t, err)
 	}
 
@@ -480,7 +480,7 @@ func TestKafkaClient_SeekLatest(t *testing.T) {
 				Payload:    IntToBytes(4),
 				Properties: map[string]string{},
 			}
-			_, err = producer.Send(ctx, msg)
+			_, err = producer.Send(Ctx, msg)
 			assert.Nil(t, err)
 		}
 	}
@@ -488,7 +488,7 @@ func TestKafkaClient_SeekLatest(t *testing.T) {
 
 func TestKafkaClient_EarliestMessageID(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	client, _ := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	client, _ := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	defer client.Close()
 
 	mid := client.EarliestMessageID()

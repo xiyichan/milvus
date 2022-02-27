@@ -52,8 +52,8 @@ type ConsumerOptions struct {
 // Message is the message content of a consumer message
 type Message struct {
 	Consumer
-	MsgID UniqueID
-	Topic string
+	MsgID   UniqueID
+	Topic   string
 	Payload []byte
 }
 

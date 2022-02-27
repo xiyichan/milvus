@@ -1,26 +1,26 @@
 package kafka
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 	"go.uber.org/zap"
 	"strconv"
 	"sync"
-	"time"
 )
 
 type kafkaClient struct {
 	client sarama.Client
 	broker []string
+	ctx    context.Context
 }
 
 var kc *kafkaClient
 var kafkaOnce sync.Once
 
-func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient, error) {
+func NewKafkaClient(broker []string, opts *sarama.Config, ctx context.Context) (*kafkaClient, error) {
 	kafkaOnce.Do(func() {
 		log.Info("kafka broker", zap.Any("broker", broker))
 		c, err := sarama.NewClient(broker, opts)
@@ -28,7 +28,7 @@ func GetKafkaClientInstance(broker []string, opts *sarama.Config) (*kafkaClient,
 			log.Error("Set kafka client failed, error", zap.Error(err))
 			return
 		}
-		cli := &kafkaClient{client: c, broker: broker}
+		cli := &kafkaClient{client: c, broker: broker, ctx: ctx}
 		kc = cli
 	})
 	return kc, nil
@@ -59,23 +59,15 @@ func (kc *kafkaClient) CreateProducer(options mqclient.ProducerOptions) (mqclien
 }
 
 func (kc *kafkaClient) CreateReader(options mqclient.ReaderOptions) (mqclient.Reader, error) {
-	groupid := time.Now().String()
-	g, err := sarama.NewConsumerGroup(kc.broker, groupid, NewKafkaConfig())
-	fmt.Println("reader name", groupid)
-	if err != nil {
-		log.Error("kafka create consumer error", zap.Error(err))
-		panic(err)
-	}
 	reader := &kafkaReader{
-		cg:         g,
-		name:       groupid,
-		readFlag:   true,
-		closeCh:    make(chan struct{}),
-		msgChannel: make(chan mqclient.Message, 10),
-		offset:     options.StartMessageID.(*kafkaID).messageID,
-		topicName:  options.Topic}
+		options: options,
+		addrs:   kc.broker,
+		config:  NewKafkaConfig(),
+		ctx:     kc.ctx,
+	}
 
-	return reader, nil
+	err := reader.init()
+	return reader, err
 }
 
 func (kc *kafkaClient) Subscribe(options mqclient.ConsumerOptions) (mqclient.Consumer, error) {

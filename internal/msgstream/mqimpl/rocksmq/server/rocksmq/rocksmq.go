@@ -22,8 +22,8 @@ type ProducerMessage struct {
 type Consumer struct {
 	Topic     string
 	GroupName string
-	MsgMutex chan struct{}
-	beginID  UniqueID
+	MsgMutex  chan struct{}
+	beginID   UniqueID
 }
 
 // ConsumerMessage that consumed from rocksdb

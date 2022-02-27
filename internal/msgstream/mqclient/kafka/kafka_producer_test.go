@@ -9,7 +9,7 @@ import (
 
 func TestPulsarProducer(t *testing.T) {
 	kafkaAddress, _ := Params.Load("_KafkaAddress")
-	kc, err := GetKafkaClientInstance([]string{kafkaAddress}, NewKafkaConfig())
+	kc, err := NewKafkaClient([]string{kafkaAddress}, NewKafkaConfig(), Ctx)
 	assert.Nil(t, err)
 	defer kc.Close()
 	assert.NoError(t, err)
