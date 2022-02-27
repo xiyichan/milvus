@@ -7,6 +7,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream/mqclient"
 	"go.uber.org/zap"
+	"math/rand"
 	"sync"
 )
 
@@ -28,6 +29,7 @@ type kafkaConsumeGroup struct {
 	msgChannel chan mqclient.Message
 
 	readyConsume    chan struct{}
+	readyNext       chan bool
 	consumeFinished chan struct{}
 	isClosed        bool
 
@@ -37,12 +39,17 @@ type kafkaConsumeGroup struct {
 
 func newKafkaConsumeGroup(ctx context.Context, addrs []string, options mqclient.ReaderOptions) (*kafkaConsumeGroup, error) {
 	NewKafkaConfig()
+	if options.Name == "" {
+		options.Name = fmt.Sprintf("%s_%d", options.Topic, rand.Int())
+	}
+
 	cg, err := sarama.NewConsumerGroup(addrs, options.Name, NewKafkaConfig())
 	if err != nil {
 		log.Error("kafka create consumer error", zap.Error(err))
 		return nil, err
 	}
 
+	readyNext := make(chan bool, 1)
 	readyConsume := make(chan struct{}, 1)
 	consumeFinished := make(chan struct{}, 1)
 	msgChannel := make(chan mqclient.Message, 1)
@@ -59,6 +66,7 @@ func newKafkaConsumeGroup(ctx context.Context, addrs []string, options mqclient.
 		ctx:             ctx,
 		cg:              cg,
 		msgChannel:      msgChannel,
+		readyNext:       readyNext,
 		readyConsume:    readyConsume,
 		consumeFinished: consumeFinished,
 		isClosed:        false,
@@ -82,13 +90,14 @@ func (kcg *kafkaConsumeGroup) init(options mqclient.ReaderOptions) {
 		kcg.h = &handler{
 			topicName:       options.Topic,
 			msgChannel:      kcg.msgChannel,
+			readyNext:       kcg.readyNext,
 			readyConsume:    kcg.readyConsume,
 			consumeFinished: kcg.consumeFinished,
 			groupName:       kcg.groupName,
 			hasNext:         true,
 			offset:          offset,
 		}
-		fmt.Println("kafkaReader Init Consume start", offset)
+		fmt.Println("["+kcg.groupName+"]", "kafkaReader Init Consume start", offset)
 
 		err := kcg.cg.Consume(kcg.ctx, topics, kcg.h)
 		if err != nil {
@@ -97,27 +106,30 @@ func (kcg *kafkaConsumeGroup) init(options mqclient.ReaderOptions) {
 			break
 		}
 
-		fmt.Println("kafkaReader Init Consume end", offset)
+		fmt.Println("["+kcg.groupName+"]", "kafkaReader Init Consume end", offset)
 	}
 }
 
 func (kcg *kafkaConsumeGroup) close() {
-	kcg.once.Do(func() {
-		fmt.Println("kafkaConsumeGroup close start", kcg.consumeFinished)
-		<-kcg.consumeFinished
-		fmt.Println("kafkaConsumeGroup close ready")
+	fmt.Println("["+kcg.groupName+"]", "kafkaConsumeGroup close start")
+	if kcg.isClosed {
+		return
+	}
 
-		//kcg.cg.PauseAll()
-		err := kcg.cg.Close()
-		if err != nil {
-			log.Error("err", zap.Any("err", err))
-		}
+	kcg.readyNext <- false
+	<-kcg.consumeFinished
 
-		close(kcg.msgChannel)
-		close(kcg.readyConsume)
-		kcg.isClosed = true
-		fmt.Println("kafkaConsumeGroup close end")
-	})
+	err := kcg.cg.Close()
+	if err != nil {
+		log.Error("["+kcg.groupName+"] err", zap.Any("err", err))
+	}
+
+	close(kcg.msgChannel)
+	close(kcg.readyConsume)
+	close(kcg.readyNext)
+
+	kcg.isClosed = true
+	fmt.Println("["+kcg.groupName+"]", "kafkaConsumeGroup close end")
 }
 
 type handler struct {
@@ -127,12 +139,12 @@ type handler struct {
 	hasNext    bool
 	groupName  string
 
+	readyNext       chan bool
 	readyConsume    chan struct{}
 	consumeFinished chan struct{}
 }
 
 func (h *handler) Setup(sess sarama.ConsumerGroupSession) error {
-	fmt.Println("kafkaReader resetoffset============ ", h.groupName, h.offset, h.topicName)
 	sess.ResetOffset(h.topicName, 0, h.offset, h.groupName)
 	sess.MarkOffset(h.topicName, 0, h.offset, h.groupName)
 	return nil
@@ -147,25 +159,28 @@ func (h *handler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.Co
 	h.readyConsume <- struct{}{}
 	highWaterMarkOffset := claim.HighWaterMarkOffset()
 
-	fmt.Println("kafkaReader ConsumeClaim", claim.HighWaterMarkOffset(), h.offset, claim.InitialOffset())
 	for msg := range claim.Messages() {
-		fmt.Println("kafkaReader ConsumeClaim loop ===", msg.Offset, highWaterMarkOffset)
+		isReady := <-h.readyNext
+		if !isReady {
+			break
+		}
 		h.msgChannel <- &kafkaMessage{msg: msg}
 		sess.MarkMessage(msg, "")
+
 		if msg.Offset >= highWaterMarkOffset-1 {
-			fmt.Println("kafkaReader ConsumeClaim return", h.consumeFinished)
-			h.hasNext = false
-			h.consumeFinished <- struct{}{}
-			return nil
+			break
 		}
 	}
 
+	h.hasNext = false
+	h.consumeFinished <- struct{}{}
 	return nil
 }
 
-func (kr *kafkaReader) init() (err error) {
+func (kr *kafkaReader) init() error {
+	var err error
 	kr.kcg, err = newKafkaConsumeGroup(kr.ctx, kr.addrs, kr.options)
-	return nil
+	return err
 }
 
 func (kr *kafkaReader) Topic() string {
@@ -173,6 +188,7 @@ func (kr *kafkaReader) Topic() string {
 }
 
 func (kr *kafkaReader) Next(ctx context.Context) (mqclient.Message, error) {
+	kr.kcg.readyNext <- true
 	select {
 	case msg := <-kr.kcg.msgChannel:
 		return msg, nil
@@ -189,9 +205,14 @@ func (kr *kafkaReader) Close() {
 
 func (kr *kafkaReader) Seek(id mqclient.MessageID) error {
 	if kr.kcg != nil {
+		fmt.Println("["+kr.kcg.groupName+"]", "reader seek close start===")
 		kr.kcg.close()
 	}
 
 	kr.options.StartMessageID = id
-	return kr.init()
+	offset := id.(*kafkaID).messageID
+	kr.options.Name = fmt.Sprintf("%s_reset_seek_%d", kr.options.Name, offset)
+
+	err := kr.init()
+	return err
 }

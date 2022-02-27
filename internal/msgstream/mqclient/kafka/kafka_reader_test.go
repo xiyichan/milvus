@@ -57,7 +57,7 @@ func TestKafkaReader(t *testing.T) {
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)
 	}
-	fmt.Println("22222", seekID)
+
 	readerOfStartMessageID, err := kc.CreateReader(mqclient.ReaderOptions{
 		Topic:                   topic,
 		Name:                    "reader_of_test",
@@ -79,13 +79,11 @@ func TestKafkaReader(t *testing.T) {
 		Name:           "reader_of_seek",
 		StartMessageID: kc.EarliestMessageID(),
 	})
+
 	assert.Nil(t, err)
 	defer readerOfSeek.Close()
 
-	fmt.Println(seekID, "=========== 44444")
-
 	err = reader.Seek(seekID)
-	fmt.Println(seekID, "=========== 44444 seek")
 
 	assert.Nil(t, err)
 	for readerOfSeek.HasNext() {
@@ -94,7 +92,5 @@ func TestKafkaReader(t *testing.T) {
 		assert.Nil(t, err)
 		assert.NotNil(t, revMsg)
 	}
-
-	fmt.Println(seekID, "=========== 44444 finished")
 
 }
